@@ -1,0 +1,19 @@
+
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+/apk_qlda/build/
+/apk_qlda/.dart_tool/
+
+# --- BACKEND (NodeJS/Java - thêm phòng hờ) ---
+node_modules/
+target/
+.env
