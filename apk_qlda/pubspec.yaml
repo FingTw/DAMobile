@@ -36,6 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   onesignal_flutter: ^5.3.4
   http: ^1.1.0
+  firebase_core: ^4.3.0
+  firebase_database: ^12.1.1
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
