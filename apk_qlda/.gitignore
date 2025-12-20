@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Miscellaneous
 *.class
 *.log
@@ -44,24 +43,3 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-=======
-
-.idea/
-.vscode/
-*.iml
-*.iws
-*.ipr
-.DS_Store
-
-build/
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-/apk_qlda/build/
-/apk_qlda/.dart_tool/
-
-# --- BACKEND (NodeJS/Java - thêm phòng hờ) ---
-node_modules/
-target/
-.env
->>>>>>> 890cd81cd44105d48c3a36b40aeddfa109c06eda
