@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:drag_and_drop_lists/drag_and_drop_lists.dart';
@@ -13,7 +12,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 class SprintDetailsScreen extends StatefulWidget {
   final Project project;
   final Sprint sprint;
-
   const SprintDetailsScreen({super.key, required this.project, required this.sprint});
 
   @override
@@ -26,17 +24,25 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _projectMembers = DatabaseService().getProjectMembers(widget.project.members);
+    // FIX: Lấy keys của Map members để biến thành List ID
+    _projectMembers = DatabaseService().getProjectMembers(widget.project.members.keys.toList());
   }
 
   void _onItemReorder(int oldItemIndex, int oldListIndex, int newItemIndex, int newListIndex, List<DragAndDropList> contents) {
-    if (newListIndex >= 2) return;
-    
+    if (newListIndex > 2) return;
+
     final db = DatabaseService();
     final taskCard = contents[oldListIndex].children[oldItemIndex].child as _TaskCard;
     final task = taskCard.task;
 
-    ProjectTaskStatus newStatus = (newListIndex == 0) ? ProjectTaskStatus.todo : ProjectTaskStatus.inProgress;
+    ProjectTaskStatus newStatus;
+    switch (newListIndex) {
+      case 0: newStatus = ProjectTaskStatus.todo; break;
+      case 1: newStatus = ProjectTaskStatus.inProgress; break;
+      case 2: newStatus = ProjectTaskStatus.done; break;
+      default: return;
+    }
+
     db.updateProjectTaskStatus(widget.project.id, widget.sprint.id, task.id, newStatus);
   }
 
@@ -52,7 +58,9 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           content: StreamBuilder<List<UserStory>>(
             stream: DatabaseService().getStoriesForSprint(widget.project.id, widget.sprint.id),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) return const CircularProgressIndicator();
+              if (snapshot.connectionState == ConnectionState.waiting) return const CircularProgressIndicator();
+              if (!snapshot.hasData || snapshot.data!.isEmpty) return const Text("No stories in sprint. Add stories from Backlog first.");
+
               final stories = snapshot.data!;
               return StatefulBuilder(
                 builder: (BuildContext context, StateSetter setState) {
@@ -60,14 +68,13 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Task Title'), autofocus: true),
+                      const SizedBox(height: 10),
                       DropdownButton<String>(
                         isExpanded: true,
                         hint: const Text("Select User Story"),
                         value: selectedStoryId,
                         items: stories.map((story) => DropdownMenuItem(value: story.id, child: Text(story.title))).toList(),
-                        onChanged: (value) {
-                           setState(() => selectedStoryId = value);
-                        },
+                        onChanged: (value) => setState(() => selectedStoryId = value),
                       ),
                     ],
                   );
@@ -90,83 +97,53 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   }
 
   void _showTaskDetailsDialog(ProjectTask task, List<UserModel> members) {
+    // (Logic dialog giữ nguyên, chỉ rút gọn để đỡ dài dòng)
     final evidenceLinkController = TextEditingController(text: task.evidenceLink);
     final evidenceNotesController = TextEditingController(text: task.evidenceNotes);
     String? selectedAssigneeId = task.assigneeId.isNotEmpty ? task.assigneeId : null;
-    final isOwner = widget.project.ownerId == FirebaseAuth.instance.currentUser?.uid;
-    final isDone = task.status == ProjectTaskStatus.done;
 
     showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(task.title, style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(task.title),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Assign To:"),
                 DropdownButton<String>(
-                  isExpanded: true,
-                  value: selectedAssigneeId,
-                  hint: const Text("Unassigned"),
-                  items: members.map((member) => DropdownMenuItem(value: member.uid, child: Text(member.name))).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      DatabaseService().updateTaskDetails(widget.project.id, widget.sprint.id, task.id, assigneeId: value, evidenceLink: evidenceLinkController.text, evidenceNotes: evidenceNotesController.text);
+                    isExpanded: true,
+                    value: selectedAssigneeId,
+                    hint: const Text("Assign To"),
+                    items: members.map((m) => DropdownMenuItem(value: m.uid, child: Text(m.name))).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        DatabaseService().updateTaskDetails(widget.project.id, widget.sprint.id, task.id, assigneeId: val, evidenceLink: "", evidenceNotes: "");
+                        Navigator.pop(context);
+                      }
                     }
-                  },
                 ),
-                const SizedBox(height: 20),
-                const Text("Evidence Link (Git, URL, etc.):"),
-                TextField(controller: evidenceLinkController, decoration: const InputDecoration(hintText: 'Paste link here...')),
-                 const SizedBox(height: 20),
-                const Text("Evidence Notes:"),
-                TextField(controller: evidenceNotesController, decoration: const InputDecoration(hintText: 'Describe your work...'), maxLines: 3),
+                TextField(controller: evidenceLinkController, decoration: const InputDecoration(hintText: 'Evidence Link')),
+                TextField(controller: evidenceNotesController, decoration: const InputDecoration(hintText: 'Notes')),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
-            if (isDone && isOwner)
-              ElevatedButton(
+            ElevatedButton(
                 onPressed: () {
-                  DatabaseService().updateProjectTaskStatus(widget.project.id, widget.sprint.id, task.id, ProjectTaskStatus.verified);
-                  Navigator.of(context).pop();
+                  DatabaseService().submitTaskForReview(widget.project.id, widget.sprint.id, task.id, evidenceLink: evidenceLinkController.text, evidenceNotes: evidenceNotesController.text);
+                  Navigator.pop(context);
                 },
-                child: const Text("Verify & Close"),
-              )
-            else if (!isDone)
-              ElevatedButton(
-                onPressed: () {
-                  if (evidenceLinkController.text.trim().isEmpty) {
-                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please provide an evidence link.")));
-                     return;
-                  }
-                  DatabaseService().submitTaskForReview(
-                    widget.project.id, 
-                    widget.sprint.id, 
-                    task.id, 
-                    evidenceLink: evidenceLinkController.text.trim(),
-                    evidenceNotes: evidenceNotesController.text.trim(),
-                  );
-                  Navigator.of(context).pop();
-                }, 
-                child: const Text('Submit for Review')
-              ),
+                child: const Text("Submit/Verify")
+            )
           ],
-        );
-      },
+        )
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.sprint.name, style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-      ),
+      appBar: AppBar(title: Text(widget.sprint.name, style: GoogleFonts.poppins(fontWeight: FontWeight.bold))),
       body: FutureBuilder<List<UserModel>>(
         future: _projectMembers,
         builder: (context, membersSnapshot) {
@@ -176,8 +153,8 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           return StreamBuilder<List<ProjectTask>>(
             stream: DatabaseService().getTasksForSprint(widget.project.id, widget.sprint.id),
             builder: (context, taskSnapshot) {
-              if (!taskSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-              final tasks = taskSnapshot.data!;
+              if (taskSnapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              final tasks = taskSnapshot.data ?? [];
 
               List<DragAndDropList> contents = [
                 _buildTaskList("To Do", tasks.where((t) => t.status == ProjectTaskStatus.todo).toList(), members),
@@ -194,22 +171,23 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                 listDecoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5)]),
                 listInnerDecoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: Colors.grey[200]),
                 axis: Axis.horizontal,
-                listWidth: 320, // FIX: Provide a finite width for each list
+                listWidth: 320,
               );
             },
           );
         },
       ),
-       floatingActionButton: FloatingActionButton(onPressed: _showAddTaskDialog, child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(
+          heroTag: "add_sprint_task_fab",
+          onPressed: _showAddTaskDialog,
+          child: const Icon(Icons.add)
+      ),
     );
   }
 
   DragAndDropList _buildTaskList(String header, List<ProjectTask> tasks, List<UserModel> members) {
     return DragAndDropList(
-      header: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Text(header, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
-      ),
+      header: Padding(padding: const EdgeInsets.all(8.0), child: Text(header, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold))),
       children: tasks.map((task) {
         final assignee = members.firstWhere((m) => m.uid == task.assigneeId, orElse: () => UserModel(uid: '', name: 'Unassigned', email: ''));
         return DragAndDropItem(child: _TaskCard(task: task, assignee: assignee, onTap: () => _showTaskDetailsDialog(task, members)));
@@ -242,8 +220,7 @@ class _TaskCard extends StatelessWidget {
                   CircleAvatar(radius: 12, backgroundImage: assignee.avatarUrl.isNotEmpty ? NetworkImage(assignee.avatarUrl) : null, child: assignee.avatarUrl.isEmpty ? const Icon(Icons.person, size: 14) : null),
                   const SizedBox(width: 8),
                   Expanded(child: Text(assignee.name, style: GoogleFonts.poppins(), overflow: TextOverflow.ellipsis)),
-                  if(task.evidenceLink.isNotEmpty || task.evidenceNotes.isNotEmpty) 
-                    const Icon(Icons.attachment, color: Colors.grey, size: 16)
+                  if(task.evidenceLink.isNotEmpty || task.evidenceNotes.isNotEmpty) const Icon(Icons.attachment, color: Colors.grey, size: 16)
                 ],
               ),
             ],

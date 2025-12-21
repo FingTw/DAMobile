@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,10 +8,10 @@ import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/models/sprint_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/sprint_details_screen.dart';
+import 'package:untitled3/screens/member_management_screen.dart'; // NHỚ TẠO FILE NÀY
 
 class ProjectDetailsScreen extends StatefulWidget {
   final Project project;
-
   const ProjectDetailsScreen({super.key, required this.project});
 
   @override
@@ -19,7 +19,6 @@ class ProjectDetailsScreen extends StatefulWidget {
 }
 
 class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -33,7 +32,34 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
             icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: Text(widget.project.name, style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.bold)),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.project.name, style: GoogleFonts.poppins(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: widget.project.joinCode));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Code copied!")));
+                },
+                child: Row(
+                  children: [
+                    Text("Code: ${widget.project.joinCode} ", style: GoogleFonts.poppins(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const Icon(Icons.copy, size: 12, color: Colors.blue),
+                  ],
+                ),
+              )
+            ],
+          ),
+          // NÚT VÀO MÀN HÌNH QUẢN LÝ THÀNH VIÊN
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.people_outline, color: Colors.black),
+              tooltip: "Members",
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => MemberManagementScreen(project: widget.project)));
+              },
+            )
+          ],
           bottom: const TabBar(
             indicatorColor: Colors.deepPurpleAccent,
             labelColor: Colors.deepPurpleAccent,
@@ -55,23 +81,59 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   }
 }
 
-// ================== BACKLOG TAB ==================
-
+// ... (Giữ nguyên BacklogTab và SprintsTab như cũ) ...
 class BacklogTab extends StatefulWidget {
   final Project project;
   const BacklogTab({super.key, required this.project});
-
   @override
   State<BacklogTab> createState() => _BacklogTabState();
 }
-
 class _BacklogTabState extends State<BacklogTab> {
-
+  void _showAddToSprintDialog(UserStory story) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Add '${story.title}' to Sprint?"),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: StreamBuilder<List<Sprint>>(
+              stream: DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).getSprints(widget.project.id),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData || snapshot.data!.isEmpty) return const Text("No active sprints found.");
+                final sprints = snapshot.data!;
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: sprints.length,
+                  itemBuilder: (context, index) {
+                    final sprint = sprints[index];
+                    return ListTile(
+                      title: Text(sprint.name),
+                      subtitle: Text("${DateFormat.MMMd().format(sprint.startDate)} - ${DateFormat.MMMd().format(sprint.endDate)}"),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () async {
+                        await DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).addStoryToSprint(widget.project.id, sprint.id, story.id);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Moved to ${sprint.name}")));
+                        }
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop())],
+        );
+      },
+    );
+  }
   void _showAddStoryDialog() {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
     final pointsController = TextEditingController();
-
     showDialog(
       context: context,
       builder: (context) {
@@ -82,20 +144,14 @@ class _BacklogTabState extends State<BacklogTab> {
             children: [
               TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title'), autofocus: true),
               TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description')),
-              TextField(controller: pointsController, decoration: const InputDecoration(labelText: 'Story Points'), keyboardType: TextInputType.number),
+              TextField(controller: pointsController, decoration: const InputDecoration(labelText: 'Points'), keyboardType: TextInputType.number),
             ],
           ),
           actions: [
             TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop()),
             ElevatedButton(child: const Text('Add'), onPressed: () {
               if (titleController.text.isNotEmpty) {
-                final user = FirebaseAuth.instance.currentUser;
-                DatabaseService(uid: user?.uid).addUserStory(
-                  widget.project.id,
-                  titleController.text,
-                  descriptionController.text,
-                  int.tryParse(pointsController.text) ?? 0,
-                );
+                DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).addUserStory(widget.project.id, titleController.text, descriptionController.text, int.tryParse(pointsController.text) ?? 0);
                 Navigator.of(context).pop();
               }
             }),
@@ -104,23 +160,14 @@ class _BacklogTabState extends State<BacklogTab> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
     return Scaffold(
       body: StreamBuilder<List<UserStory>>(
-        stream: DatabaseService(uid: user?.uid).getBacklog(widget.project.id),
+        stream: DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).getBacklog(widget.project.id),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("Backlog is empty."));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("Backlog is empty."));
           final stories = snapshot.data!;
           return ListView.builder(
             padding: const EdgeInsets.all(8),
@@ -131,35 +178,36 @@ class _BacklogTabState extends State<BacklogTab> {
                 margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: ListTile(
                   title: Text(story.title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-                  trailing: CircleAvatar(child: Text(story.points.toString())),
+                  subtitle: Text("Points: ${story.points}"),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.input, color: Colors.blue), tooltip: "Add to Sprint", onPressed: () => _showAddToSprintDialog(story)),
+                      CircleAvatar(radius: 15, child: Text(story.points.toString(), style: const TextStyle(fontSize: 12))),
+                    ],
+                  ),
                 ),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(onPressed: _showAddStoryDialog, child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(heroTag: "add_backlog_story_fab", onPressed: _showAddStoryDialog, child: const Icon(Icons.add)),
     );
   }
 }
 
-// ================== SPRINTS TAB ==================
-
 class SprintsTab extends StatefulWidget {
   final Project project;
   const SprintsTab({super.key, required this.project});
-
   @override
   State<SprintsTab> createState() => _SprintsTabState();
 }
-
 class _SprintsTabState extends State<SprintsTab> {
-
   Future<void> _showAddSprintDialog() async {
     final nameController = TextEditingController();
     DateTime startDate = DateTime.now();
     DateTime endDate = DateTime.now().add(const Duration(days: 14));
-
     await showDialog(
       context: context,
       builder: (context) {
@@ -172,29 +220,24 @@ class _SprintsTabState extends State<SprintsTab> {
                 children: [
                   TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Sprint Name'), autofocus: true),
                   const SizedBox(height: 20),
-                  Text("Start Date: ${DateFormat.yMMMd().format(startDate)}"),
+                  Text("Start: ${DateFormat.yMMMd().format(startDate)}"),
                   ElevatedButton(onPressed: () async {
                     final pickedDate = await showDatePicker(context: context, initialDate: startDate, firstDate: DateTime(2020), lastDate: DateTime(2040));
-                    if (pickedDate != null) {
-                      setState(() { startDate = pickedDate; });
-                    }
-                  }, child: const Text("Select Start Date")),
+                    if (pickedDate != null) setState(() => startDate = pickedDate);
+                  }, child: const Text("Select Start")),
                   const SizedBox(height: 10),
-                  Text("End Date: ${DateFormat.yMMMd().format(endDate)}"),
-                   ElevatedButton(onPressed: () async {
+                  Text("End: ${DateFormat.yMMMd().format(endDate)}"),
+                  ElevatedButton(onPressed: () async {
                     final pickedDate = await showDatePicker(context: context, initialDate: endDate, firstDate: DateTime(2020), lastDate: DateTime(2040));
-                    if (pickedDate != null) {
-                      setState(() { endDate = pickedDate; });
-                    }
-                  }, child: const Text("Select End Date")),
+                    if (pickedDate != null) setState(() => endDate = pickedDate);
+                  }, child: const Text("Select End")),
                 ],
               ),
               actions: [
                 TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop()),
                 ElevatedButton(child: const Text('Create'), onPressed: () {
                   if (nameController.text.isNotEmpty) {
-                    final user = FirebaseAuth.instance.currentUser;
-                    DatabaseService(uid: user?.uid).addSprint(widget.project.id, nameController.text, startDate, endDate);
+                    DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).addSprint(widget.project.id, nameController.text, startDate, endDate);
                     Navigator.of(context).pop();
                   }
                 }),
@@ -205,23 +248,14 @@ class _SprintsTabState extends State<SprintsTab> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
     return Scaffold(
       body: StreamBuilder<List<Sprint>>(
-        stream: DatabaseService(uid: user?.uid).getSprints(widget.project.id),
+        stream: DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).getSprints(widget.project.id),
         builder: (context, snapshot) {
-           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No sprints created yet."));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("No sprints created yet."));
           final sprints = snapshot.data!;
           return ListView.builder(
             padding: const EdgeInsets.all(8),
@@ -234,10 +268,7 @@ class _SprintsTabState extends State<SprintsTab> {
                   title: Text(sprint.name, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
                   subtitle: Text("${DateFormat.yMMMd().format(sprint.startDate)} - ${DateFormat.yMMMd().format(sprint.endDate)}"),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => SprintDetailsScreen(project: widget.project, sprint: sprint)),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => SprintDetailsScreen(project: widget.project, sprint: sprint)));
                   },
                 ),
               );
@@ -245,7 +276,7 @@ class _SprintsTabState extends State<SprintsTab> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(onPressed: _showAddSprintDialog, child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(heroTag: "add_sprint_fab", onPressed: _showAddSprintDialog, child: const Icon(Icons.add)),
     );
   }
 }
