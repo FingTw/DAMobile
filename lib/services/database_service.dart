@@ -1,5 +1,5 @@
-
 import 'dart:async';
+import 'dart:math';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:untitled3/models/user_model.dart';
 import 'package:untitled3/models/task_model.dart';
@@ -14,9 +14,13 @@ class DatabaseService {
 
   final FirebaseDatabase _database = FirebaseDatabase.instance;
 
-  // --- REFERENCES ---
+  // --- REFERENCES (CẤU TRÚC PHẲNG) ---
   DatabaseReference get _usersRef => _database.ref('users');
   DatabaseReference get _projectsRef => _database.ref('projects');
+  DatabaseReference get _sprintsRef => _database.ref('sprints');
+  DatabaseReference get _tasksRef => _database.ref('tasks');
+  DatabaseReference get _storiesRef => _database.ref('stories');
+
   DatabaseReference get userRef => _usersRef.child(uid!);
   DatabaseReference get personalTasksRef => userRef.child('personal_tasks');
 
@@ -60,72 +64,123 @@ class DatabaseService {
 
   // =================== PROJECT METHODS ===================
 
+  String _generateJoinCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final rnd = Random();
+    return String.fromCharCodes(Iterable.generate(6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
+  }
+
   Future<void> createProject(String name, String description) async {
     final newProjectRef = _projectsRef.push();
+    String code = _generateJoinCode();
+
     await newProjectRef.set({
-      'name': name, 'description': description, 'ownerId': uid, 'members': [uid], 'createdAt': ServerValue.timestamp,
+      'name': name,
+      'description': description,
+      'ownerId': uid,
+      'joinCode': code,
+      'isLocked': false,
+      'members': {
+        uid!: 'PO' // Người tạo là PO
+      },
+      'createdAt': ServerValue.timestamp,
     });
+  }
+
+  Future<String> joinProjectByCode(String inputCode) async {
+    final snapshot = await _projectsRef.orderByChild('joinCode').equalTo(inputCode).get();
+
+    if (!snapshot.exists) return "Project code not found!";
+
+    Map<dynamic, dynamic> values = snapshot.value as Map;
+    String projectId = values.keys.first;
+    Map<String, dynamic> projectData = Map<String, dynamic>.from(values[projectId]);
+
+    bool isLocked = projectData['isLocked'] ?? false;
+    if (isLocked) return "This project is locked by PO.";
+
+    Map<dynamic, dynamic> members = projectData['members'] ?? {};
+    if (members.containsKey(uid)) return "You are already in this project!";
+
+    // Thêm vào với vai trò Dev
+    await _projectsRef.child(projectId).child('members').update({
+      uid!: 'Dev'
+    });
+
+    return "Success";
   }
 
   Stream<List<Project>> getProjects() {
     return _projectsRef.onValue.map((event) {
       final List<Project> projects = [];
-      if (event.snapshot.exists && event.snapshot.value != null && event.snapshot.value is Map) {
+      if (!event.snapshot.exists || event.snapshot.value == null) return projects;
+
+      try {
         final allProjects = Map<String, dynamic>.from(event.snapshot.value as Map);
         allProjects.forEach((projectId, projectData) {
           if (projectData is Map) {
             final projectMap = Map<String, dynamic>.from(projectData);
-            final members = List<String>.from(projectMap['members'] ?? []);
-            if (members.contains(uid)) {
+            Map<dynamic, dynamic> members = projectMap['members'] ?? {};
+            // Chỉ lấy project mà mình có trong danh sách thành viên
+            if (members.containsKey(uid)) {
               projects.add(Project.fromMap(projectMap, projectId));
             }
           }
         });
+      } catch (e) {
+        print("Error parsing projects: $e");
       }
       return projects;
     });
   }
 
-  // =================== USER STORY METHODS ===================
-
-  DatabaseReference getBacklogRef(String projectId) => _projectsRef.child(projectId).child('backlog');
+  // =================== USER STORY (BACKLOG) ===================
 
   Future<void> addUserStory(String projectId, String title, String description, int points) async {
-    await getBacklogRef(projectId).push().set({
-      'title': title, 'description': description, 'points': points, 'status': 'backlog', 'createdAt': ServerValue.timestamp,
+    await _storiesRef.push().set({
+      'projectId': projectId,
+      'title': title,
+      'description': description,
+      'points': points,
+      'status': 'backlog',
+      'createdAt': ServerValue.timestamp,
     });
   }
 
   Stream<List<UserStory>> getBacklog(String projectId) {
-    final ref = getBacklogRef(projectId).orderByChild('status').equalTo('backlog');
-    return ref.onValue.map((event) {
+    return _storiesRef.orderByChild('projectId').equalTo(projectId).onValue.map((event) {
       final List<UserStory> stories = [];
-      if (event.snapshot.exists && event.snapshot.value != null && event.snapshot.value is Map) {
+      if (event.snapshot.exists && event.snapshot.value is Map) {
         final allStories = Map<String, dynamic>.from(event.snapshot.value as Map);
         allStories.forEach((storyId, storyData) {
           if (storyData is Map) {
-            stories.add(UserStory.fromMap(Map<String, dynamic>.from(storyData), storyId));
+            final data = Map<String, dynamic>.from(storyData);
+            if (data['status'] == 'backlog') {
+              stories.add(UserStory.fromMap(data, storyId));
+            }
           }
         });
       }
       return stories;
     });
   }
-  
+
   // =================== SPRINT METHODS ===================
 
-  DatabaseReference getSprintsRef(String projectId) => _projectsRef.child(projectId).child('sprints');
-
   Future<void> addSprint(String projectId, String name, DateTime startDate, DateTime endDate) async {
-    await getSprintsRef(projectId).push().set({
-      'name': name, 'startDate': startDate.millisecondsSinceEpoch, 'endDate': endDate.millisecondsSinceEpoch, 'status': 'upcoming',
+    await _sprintsRef.push().set({
+      'projectId': projectId,
+      'name': name,
+      'startDate': startDate.millisecondsSinceEpoch,
+      'endDate': endDate.millisecondsSinceEpoch,
+      'status': 'upcoming',
     });
   }
 
   Stream<List<Sprint>> getSprints(String projectId) {
-    return getSprintsRef(projectId).onValue.map((event) {
+    return _sprintsRef.orderByChild('projectId').equalTo(projectId).onValue.map((event) {
       final List<Sprint> sprints = [];
-      if (event.snapshot.exists && event.snapshot.value != null && event.snapshot.value is Map) {
+      if (event.snapshot.exists && event.snapshot.value is Map) {
         final allSprints = Map<String, dynamic>.from(event.snapshot.value as Map);
         allSprints.forEach((sprintId, sprintData) {
           if (sprintData is Map) {
@@ -138,17 +193,16 @@ class DatabaseService {
   }
 
   Future<void> addStoryToSprint(String projectId, String sprintId, String storyId) async {
-    final storyRef = getBacklogRef(projectId).child(storyId);
-    final storySnapshot = await storyRef.get();
-    if (!storySnapshot.exists) return;
-    await getSprintsRef(projectId).child(sprintId).child('stories').child(storyId).set(storySnapshot.value);
-    await storyRef.update({'status': 'inSprint'});
+    await _storiesRef.child(storyId).update({
+      'status': 'inSprint',
+      'sprintId': sprintId,
+    });
   }
 
   Stream<List<UserStory>> getStoriesForSprint(String projectId, String sprintId) {
-    return getSprintsRef(projectId).child(sprintId).child('stories').onValue.map((event) {
+    return _storiesRef.orderByChild('sprintId').equalTo(sprintId).onValue.map((event) {
       final List<UserStory> stories = [];
-      if (event.snapshot.exists && event.snapshot.value != null && event.snapshot.value is Map) {
+      if (event.snapshot.exists && event.snapshot.value is Map) {
         final allStories = Map<String, dynamic>.from(event.snapshot.value as Map);
         allStories.forEach((storyId, storyData) {
           if (storyData is Map) {
@@ -162,35 +216,44 @@ class DatabaseService {
 
   // =================== PROJECT TASK METHODS ===================
 
-  DatabaseReference getProjectTasksRef(String projectId, String sprintId) => 
-      _projectsRef.child(projectId).child('sprints').child(sprintId).child('tasks');
-
   Future<void> addProjectTask(String projectId, String sprintId, String storyId, String title) async {
-    await getProjectTasksRef(projectId, sprintId).push().set({
-      'title': title, 'storyId': storyId, 'status': 'todo', 'assigneeId': '', 'evidenceLink': '', 'evidenceNotes': '', 'createdAt': ServerValue.timestamp,
+    await _tasksRef.push().set({
+      'projectId': projectId,
+      'sprintId': sprintId,
+      'storyId': storyId,
+      'title': title,
+      'status': 'todo',
+      'assigneeId': '',
+      'evidenceLink': '',
+      'evidenceNotes': '',
+      'createdAt': ServerValue.timestamp,
     });
   }
 
   Future<void> updateProjectTaskStatus(String projectId, String sprintId, String taskId, ProjectTaskStatus newStatus) async {
-    await getProjectTasksRef(projectId, sprintId).child(taskId).update({'status': newStatus.toString().split('.').last});
+    await _tasksRef.child(taskId).update({'status': newStatus.toString().split('.').last});
   }
 
   Future<void> submitTaskForReview(String projectId, String sprintId, String taskId, {String? evidenceLink, String? evidenceNotes}) async {
-    await getProjectTasksRef(projectId, sprintId).child(taskId).update({
-      'status': 'done', 'evidenceLink': evidenceLink ?? '', 'evidenceNotes': evidenceNotes ?? '',
+    await _tasksRef.child(taskId).update({
+      'status': 'done',
+      'evidenceLink': evidenceLink ?? '',
+      'evidenceNotes': evidenceNotes ?? '',
     });
   }
 
   Future<void> updateTaskDetails(String projectId, String sprintId, String taskId, {required String assigneeId, required String evidenceLink, required String evidenceNotes}) async {
-    await getProjectTasksRef(projectId, sprintId).child(taskId).update({
-      'assigneeId': assigneeId, 'evidenceLink': evidenceLink, 'evidenceNotes': evidenceNotes,
+    await _tasksRef.child(taskId).update({
+      'assigneeId': assigneeId,
+      'evidenceLink': evidenceLink,
+      'evidenceNotes': evidenceNotes,
     });
   }
 
   Stream<List<ProjectTask>> getTasksForSprint(String projectId, String sprintId) {
-    return getProjectTasksRef(projectId, sprintId).onValue.map((event) {
+    return _tasksRef.orderByChild('sprintId').equalTo(sprintId).onValue.map((event) {
       final List<ProjectTask> tasks = [];
-      if (event.snapshot.exists && event.snapshot.value != null && event.snapshot.value is Map) {
+      if (event.snapshot.exists && event.snapshot.value is Map) {
         final allTasks = Map<String, dynamic>.from(event.snapshot.value as Map);
         allTasks.forEach((key, value) {
           if (value is Map) {
@@ -221,7 +284,7 @@ class DatabaseService {
   Stream<List<Task>> get personalTasks {
     return personalTasksRef.onValue.map((event) {
       final List<Task> tasks = [];
-      if (event.snapshot.exists && event.snapshot.value != null && event.snapshot.value is Map) {
+      if (event.snapshot.exists && event.snapshot.value is Map) {
         final data = Map<String, dynamic>.from(event.snapshot.value as Map);
         data.forEach((key, value) {
           if (value is Map) {
@@ -232,7 +295,7 @@ class DatabaseService {
               priority: taskMap['priority'] ?? 2,
               createdAt: DateTime.fromMillisecondsSinceEpoch(taskMap['createdAt'] ?? 0),
               status: TaskStatus.values.firstWhere(
-                (e) => e.toString().split('.').last == (taskMap['status'] ?? 'inProgress'),
+                    (e) => e.toString().split('.').last == (taskMap['status'] ?? 'inProgress'),
                 orElse: () => TaskStatus.inProgress,
               ),
             ));
