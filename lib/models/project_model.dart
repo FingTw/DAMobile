@@ -2,12 +2,11 @@ class Project {
   final String id;
   final String name;
   final String description;
-  final String ownerId; // UID người tạo
-
-  // --- CÁC TRƯỜNG MỚI ---
-  final String joinCode;        // Mã tham gia (VD: A2B9X)
-  final bool isLocked;          // Trạng thái khóa
-  final Map<String, String> members; // Lưu dạng: {"uid": "Role"}
+  final String ownerId;
+  final String joinCode;
+  final bool isLocked;
+  final int maxMembers; // MỚI: Giới hạn số lượng
+  final Map<String, String> members;
 
   Project({
     required this.id,
@@ -16,6 +15,7 @@ class Project {
     required this.ownerId,
     required this.joinCode,
     required this.isLocked,
+    required this.maxMembers,
     required this.members,
   });
 
@@ -27,7 +27,6 @@ class Project {
           membersMap[key.toString()] = value.toString();
         });
       } else if (data['members'] is List) {
-        // Fallback cho dữ liệu cũ (nếu có)
         for (var id in (data['members'] as List)) {
           membersMap[id.toString()] = 'Dev';
         }
@@ -41,6 +40,7 @@ class Project {
       ownerId: data['ownerId'] ?? '',
       joinCode: data['joinCode'] ?? '',
       isLocked: data['isLocked'] ?? false,
+      maxMembers: data['maxMembers'] ?? 10, // Mặc định 10 người nếu không có
       members: membersMap,
     );
   }
@@ -52,6 +52,7 @@ class Project {
       'ownerId': ownerId,
       'joinCode': joinCode,
       'isLocked': isLocked,
+      'maxMembers': maxMembers,
       'members': members,
     };
   }

@@ -8,6 +8,7 @@ import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/models/sprint_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/sprint_details_screen.dart';
+import 'package:untitled3/screens/member_management_screen.dart'; // NHỚ TẠO FILE NÀY
 
 class ProjectDetailsScreen extends StatefulWidget {
   final Project project;
@@ -49,6 +50,16 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
               )
             ],
           ),
+          // NÚT VÀO MÀN HÌNH QUẢN LÝ THÀNH VIÊN
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.people_outline, color: Colors.black),
+              tooltip: "Members",
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => MemberManagementScreen(project: widget.project)));
+              },
+            )
+          ],
           bottom: const TabBar(
             indicatorColor: Colors.deepPurpleAccent,
             labelColor: Colors.deepPurpleAccent,
@@ -70,16 +81,14 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   }
 }
 
+// ... (Giữ nguyên BacklogTab và SprintsTab như cũ) ...
 class BacklogTab extends StatefulWidget {
   final Project project;
   const BacklogTab({super.key, required this.project});
-
   @override
   State<BacklogTab> createState() => _BacklogTabState();
 }
-
 class _BacklogTabState extends State<BacklogTab> {
-
   void _showAddToSprintDialog(UserStory story) {
     showDialog(
       context: context,
@@ -93,7 +102,6 @@ class _BacklogTabState extends State<BacklogTab> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 if (!snapshot.hasData || snapshot.data!.isEmpty) return const Text("No active sprints found.");
-
                 final sprints = snapshot.data!;
                 return ListView.builder(
                   shrinkWrap: true,
@@ -105,8 +113,7 @@ class _BacklogTabState extends State<BacklogTab> {
                       subtitle: Text("${DateFormat.MMMd().format(sprint.startDate)} - ${DateFormat.MMMd().format(sprint.endDate)}"),
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                       onTap: () async {
-                        await DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid)
-                            .addStoryToSprint(widget.project.id, sprint.id, story.id);
+                        await DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).addStoryToSprint(widget.project.id, sprint.id, story.id);
                         if (mounted) {
                           Navigator.of(context).pop();
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Moved to ${sprint.name}")));
@@ -123,12 +130,10 @@ class _BacklogTabState extends State<BacklogTab> {
       },
     );
   }
-
   void _showAddStoryDialog() {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
     final pointsController = TextEditingController();
-
     showDialog(
       context: context,
       builder: (context) {
@@ -146,8 +151,7 @@ class _BacklogTabState extends State<BacklogTab> {
             TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop()),
             ElevatedButton(child: const Text('Add'), onPressed: () {
               if (titleController.text.isNotEmpty) {
-                DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).addUserStory(
-                    widget.project.id, titleController.text, descriptionController.text, int.tryParse(pointsController.text) ?? 0);
+                DatabaseService(uid: FirebaseAuth.instance.currentUser?.uid).addUserStory(widget.project.id, titleController.text, descriptionController.text, int.tryParse(pointsController.text) ?? 0);
                 Navigator.of(context).pop();
               }
             }),
@@ -156,7 +160,6 @@ class _BacklogTabState extends State<BacklogTab> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -165,7 +168,6 @@ class _BacklogTabState extends State<BacklogTab> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("Backlog is empty."));
-
           final stories = snapshot.data!;
           return ListView.builder(
             padding: const EdgeInsets.all(8),
@@ -180,11 +182,7 @@ class _BacklogTabState extends State<BacklogTab> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.input, color: Colors.blue),
-                        tooltip: "Add to Sprint",
-                        onPressed: () => _showAddToSprintDialog(story),
-                      ),
+                      IconButton(icon: const Icon(Icons.input, color: Colors.blue), tooltip: "Add to Sprint", onPressed: () => _showAddToSprintDialog(story)),
                       CircleAvatar(radius: 15, child: Text(story.points.toString(), style: const TextStyle(fontSize: 12))),
                     ],
                   ),
@@ -194,11 +192,7 @@ class _BacklogTabState extends State<BacklogTab> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-          heroTag: "add_backlog_story_fab",
-          onPressed: _showAddStoryDialog,
-          child: const Icon(Icons.add)
-      ),
+      floatingActionButton: FloatingActionButton(heroTag: "add_backlog_story_fab", onPressed: _showAddStoryDialog, child: const Icon(Icons.add)),
     );
   }
 }
@@ -206,17 +200,14 @@ class _BacklogTabState extends State<BacklogTab> {
 class SprintsTab extends StatefulWidget {
   final Project project;
   const SprintsTab({super.key, required this.project});
-
   @override
   State<SprintsTab> createState() => _SprintsTabState();
 }
-
 class _SprintsTabState extends State<SprintsTab> {
   Future<void> _showAddSprintDialog() async {
     final nameController = TextEditingController();
     DateTime startDate = DateTime.now();
     DateTime endDate = DateTime.now().add(const Duration(days: 14));
-
     await showDialog(
       context: context,
       builder: (context) {
@@ -257,7 +248,6 @@ class _SprintsTabState extends State<SprintsTab> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -286,11 +276,7 @@ class _SprintsTabState extends State<SprintsTab> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-          heroTag: "add_sprint_fab",
-          onPressed: _showAddSprintDialog,
-          child: const Icon(Icons.add)
-      ),
+      floatingActionButton: FloatingActionButton(heroTag: "add_sprint_fab", onPressed: _showAddSprintDialog, child: const Icon(Icons.add)),
     );
   }
 }

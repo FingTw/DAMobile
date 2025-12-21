@@ -70,7 +70,8 @@ class DatabaseService {
     return String.fromCharCodes(Iterable.generate(6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
   }
 
-  Future<void> createProject(String name, String description) async {
+  // CẬP NHẬT: Thêm tham số maxMembers (mặc định 10 nếu không truyền)
+  Future<void> createProject(String name, String description, [int maxMembers = 10]) async {
     final newProjectRef = _projectsRef.push();
     String code = _generateJoinCode();
 
@@ -80,6 +81,7 @@ class DatabaseService {
       'ownerId': uid,
       'joinCode': code,
       'isLocked': false,
+      'maxMembers': maxMembers, // Lưu giới hạn số người
       'members': {
         uid!: 'PO' // Người tạo là PO
       },
@@ -87,6 +89,7 @@ class DatabaseService {
     });
   }
 
+  // CẬP NHẬT: Check khóa + Check đầy phòng
   Future<String> joinProjectByCode(String inputCode) async {
     final snapshot = await _projectsRef.orderByChild('joinCode').equalTo(inputCode).get();
 
@@ -96,11 +99,19 @@ class DatabaseService {
     String projectId = values.keys.first;
     Map<String, dynamic> projectData = Map<String, dynamic>.from(values[projectId]);
 
+    // 1. Check khóa
     bool isLocked = projectData['isLocked'] ?? false;
     if (isLocked) return "This project is locked by PO.";
 
+    // 2. Check đã tham gia chưa
     Map<dynamic, dynamic> members = projectData['members'] ?? {};
     if (members.containsKey(uid)) return "You are already in this project!";
+
+    // 3. Check số lượng (NEW)
+    int maxMembers = projectData['maxMembers'] ?? 10;
+    if (members.length >= maxMembers) {
+      return "Project is FULL (Max: $maxMembers members).";
+    }
 
     // Thêm vào với vai trò Dev
     await _projectsRef.child(projectId).child('members').update({
@@ -131,6 +142,27 @@ class DatabaseService {
         print("Error parsing projects: $e");
       }
       return projects;
+    });
+  }
+
+  // --- CÁC HÀM QUẢN LÝ THÀNH VIÊN (MỚI) ---
+
+  // Xóa thành viên khỏi dự án (Kick)
+  Future<void> removeMember(String projectId, String memberId) async {
+    await _projectsRef.child(projectId).child('members').child(memberId).remove();
+  }
+
+  // Cập nhật vai trò (VD: Dev -> SM)
+  Future<void> updateMemberRole(String projectId, String memberId, String newRole) async {
+    await _projectsRef.child(projectId).child('members').update({
+      memberId: newRole
+    });
+  }
+
+  // Khóa/Mở khóa dự án
+  Future<void> toggleProjectLock(String projectId, bool isLocked) async {
+    await _projectsRef.child(projectId).update({
+      'isLocked': isLocked
     });
   }
 

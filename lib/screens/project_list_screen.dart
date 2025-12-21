@@ -17,6 +17,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   void _showCreateProjectDialog() {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController descController = TextEditingController();
+    final TextEditingController limitController = TextEditingController(text: "10"); // Mặc định 10
 
     showDialog(
       context: context,
@@ -29,6 +30,9 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
               TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Project Name'), autofocus: true),
               const SizedBox(height: 10),
               TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
+              const SizedBox(height: 10),
+              // Thêm ô nhập giới hạn
+              TextField(controller: limitController, decoration: const InputDecoration(labelText: 'Max Members'), keyboardType: TextInputType.number),
             ],
           ),
           actions: [
@@ -37,7 +41,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
               if (nameController.text.isNotEmpty) {
                 final user = FirebaseAuth.instance.currentUser;
                 if (user != null) {
-                  DatabaseService(uid: user.uid).createProject(nameController.text, descController.text);
+                  int max = int.tryParse(limitController.text) ?? 10;
+                  DatabaseService(uid: user.uid).createProject(nameController.text, descController.text, max);
                 }
                 Navigator.of(context).pop();
               }
@@ -64,10 +69,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: codeController,
-                  decoration: const InputDecoration(
-                    hintText: "e.g. A2B9X",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(hintText: "e.g. A2B9X", border: OutlineInputBorder()),
                   textCapitalization: TextCapitalization.characters,
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 20, letterSpacing: 2, fontWeight: FontWeight.bold),
@@ -121,10 +123,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         stream: DatabaseService(uid: user.uid).getProjects(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(child: Text("You are not in any projects yet.", style: GoogleFonts.poppins()));
-          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) return Center(child: Text("No projects yet.", style: GoogleFonts.poppins()));
 
           final projects = snapshot.data!;
           return ListView.builder(
@@ -145,10 +144,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                   subtitle: Text(project.description, maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => ProjectDetailsScreen(project: project)),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => ProjectDetailsScreen(project: project)));
                   },
                 ),
               );
