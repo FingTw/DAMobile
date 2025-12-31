@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,7 +14,6 @@ class TaskScreen extends StatefulWidget {
 }
 
 class _TaskScreenState extends State<TaskScreen> {
-
   void _showAddTaskDialog() {
     final TextEditingController titleController = TextEditingController();
     int selectedPriority = 1;
@@ -24,7 +22,9 @@ class _TaskScreenState extends State<TaskScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
           title: Text("Add New Personal Task", style: GoogleFonts.poppins()),
           content: StatefulBuilder(
             builder: (BuildContext context, StateSetter setState) {
@@ -41,7 +41,10 @@ class _TaskScreenState extends State<TaskScreen> {
                     value: selectedPriority,
                     items: const [
                       DropdownMenuItem(value: 1, child: Text('High Priority')),
-                      DropdownMenuItem(value: 2, child: Text('Medium Priority')),
+                      DropdownMenuItem(
+                        value: 2,
+                        child: Text('Medium Priority'),
+                      ),
                       DropdownMenuItem(value: 3, child: Text('Low Priority')),
                     ],
                     onChanged: (value) {
@@ -65,7 +68,9 @@ class _TaskScreenState extends State<TaskScreen> {
                 if (titleController.text.isNotEmpty) {
                   final user = FirebaseAuth.instance.currentUser;
                   if (user != null) {
-                    DatabaseService(uid: user.uid).addPersonalTask(titleController.text, selectedPriority);
+                    DatabaseService(
+                      uid: user.uid,
+                    ).addPersonalTask(titleController.text, selectedPriority);
                   }
                   Navigator.of(context).pop();
                 }
@@ -83,75 +88,110 @@ class _TaskScreenState extends State<TaskScreen> {
     if (user == null) return const Center(child: Text("Please log in."));
 
     return Scaffold(
-        backgroundColor: Colors.white,
-        body: StreamBuilder<List<Task>>(
-          stream: DatabaseService(uid: user.uid).personalTasks,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text("Error: ${snapshot.error}"));
-            }
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return Center(
-                child: Text("No personal tasks yet. Press '+' to add one!", style: GoogleFonts.poppins(color: Colors.grey[600], fontSize: 16)),
-              );
-            }
+      backgroundColor: Colors.white,
+      body: StreamBuilder<List<Task>>(
+        stream: DatabaseService(uid: user.uid).personalTasks,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(
+              child: Text(
+                "No personal tasks yet. Press '+' to add one!",
+                style: GoogleFonts.poppins(
+                  color: Colors.grey[600],
+                  fontSize: 16,
+                ),
+              ),
+            );
+          }
 
-            final tasks = snapshot.data!;
+          final tasks = snapshot.data!;
 
-            final draftTasks = tasks.where((t) => t.status == TaskStatus.inProgress).toList();
-            final doneTasks = tasks.where((t) => t.status == TaskStatus.done).toList();
+          final draftTasks = tasks
+              .where((t) => t.status == TaskStatus.inProgress)
+              .toList();
+          final doneTasks = tasks
+              .where((t) => t.status == TaskStatus.done)
+              .toList();
 
-            return DefaultTabController(
-              length: 2,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-                    child: Container(
-                      height: 45,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
+          return DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20.0,
+                    vertical: 10.0,
+                  ),
+                  child: Container(
+                    height: 45,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(25.0),
+                    ),
+                    child: TabBar(
+                      labelColor: Colors.white,
+                      unselectedLabelColor: Colors.black,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicator: BoxDecoration(
                         borderRadius: BorderRadius.circular(25.0),
-                      ),
-                      child: TabBar(
-                        labelColor: Colors.white,
-                        unselectedLabelColor: Colors.black,
-                        indicatorSize: TabBarIndicatorSize.tab,
-                        indicator: BoxDecoration(
-                          borderRadius: BorderRadius.circular(25.0),
-                          gradient: const LinearGradient(colors: [Color(0xFF8E2DE2), Color(0xFF4A00E0)]),
-                          boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF8E2DE2), Color(0xFF4A00E0)],
                         ),
-                        tabs: [
-                          Tab(child: Text("In Progress", style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
-                          Tab(child: Text("Completed", style: GoogleFonts.poppins(fontWeight: FontWeight.w600))),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.purple.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildTaskList(draftTasks, "No tasks in progress."),
-                        _buildTaskList(doneTasks, "No completed tasks yet."),
+                      tabs: [
+                        Tab(
+                          child: Text(
+                            "In Progress",
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Tab(
+                          child: Text(
+                            "Completed",
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            );
-          },
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _showAddTaskDialog,
-          backgroundColor: const Color(0xFF4A00E0),
-          elevation: 5,
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
-      );
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _buildTaskList(draftTasks, "No tasks in progress."),
+                      _buildTaskList(doneTasks, "No completed tasks yet."),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddTaskDialog,
+        backgroundColor: const Color(0xFF4A00E0),
+        elevation: 5,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
   }
 
   String _getGroupTitle(DateTime date) {
@@ -171,10 +211,18 @@ class _TaskScreenState extends State<TaskScreen> {
 
   Widget _buildTaskList(List<Task> tasks, String emptyMessage) {
     if (tasks.isEmpty) {
-      return Center(child: Text(emptyMessage, style: GoogleFonts.poppins(color: Colors.grey[600], fontSize: 16)));
+      return Center(
+        child: Text(
+          emptyMessage,
+          style: GoogleFonts.poppins(color: Colors.grey[600], fontSize: 16),
+        ),
+      );
     }
 
-    final groupedTasks = groupBy(tasks, (Task task) => _getGroupTitle(task.createdAt));
+    final groupedTasks = groupBy(
+      tasks,
+      (Task task) => _getGroupTitle(task.createdAt),
+    );
 
     return ListView.builder(
       padding: const EdgeInsets.all(20.0),
@@ -193,9 +241,16 @@ class _TaskScreenState extends State<TaskScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4.0, bottom: 15.0, top: 10.0),
-          child: Text(title, style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+          child: Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
         ),
-        ...tasks.map((task) => _TaskListItem(task: task)).toList(),
+        ...tasks.map((task) => _TaskListItem(task: task)),
         const SizedBox(height: 30),
       ],
     );
@@ -208,10 +263,14 @@ class _TaskListItem extends StatelessWidget {
 
   Color _getPriorityColor() {
     switch (task.priority) {
-      case 1: return const Color(0xFF29B6F6);
-      case 2: return const Color(0xFFAB47BC);
-      case 3: return const Color(0xFFFF7043);
-      default: return Colors.grey;
+      case 1:
+        return const Color(0xFF29B6F6);
+      case 2:
+        return const Color(0xFFAB47BC);
+      case 3:
+        return const Color(0xFFFF7043);
+      default:
+        return Colors.grey;
     }
   }
 
@@ -231,7 +290,9 @@ class _TaskListItem extends StatelessWidget {
         onTap: () {
           if (user != null) {
             final newStatus = isDone ? TaskStatus.inProgress : TaskStatus.done;
-            DatabaseService(uid: user.uid).updatePersonalTaskStatus(task.id, newStatus);
+            DatabaseService(
+              uid: user.uid,
+            ).updatePersonalTaskStatus(task.id, newStatus);
           }
         },
         child: Padding(
@@ -250,7 +311,9 @@ class _TaskListItem extends StatelessWidget {
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    decoration: isDone ? TextDecoration.lineThrough : TextDecoration.none,
+                    decoration: isDone
+                        ? TextDecoration.lineThrough
+                        : TextDecoration.none,
                     color: isDone ? Colors.grey.shade500 : Colors.black87,
                   ),
                 ),

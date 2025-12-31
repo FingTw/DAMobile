@@ -1,5 +1,4 @@
-
-enum UserStoryStatus { backlog, inSprint, done }
+enum UserStoryStatus { backlog, inSprint, todo, inProgress, review, done }
 
 class UserStory {
   final String id;

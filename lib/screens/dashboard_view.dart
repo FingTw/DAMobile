@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -26,31 +25,47 @@ class DashboardView extends StatelessWidget {
         }
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return Center(
-              child: Text("No personal tasks yet. Add one in the 'My Tasks' tab!", style: GoogleFonts.poppins()));
+            child: Text(
+              "No personal tasks yet. Add one in the 'My Tasks' tab!",
+              style: GoogleFonts.poppins(),
+            ),
+          );
         }
 
         final tasks = snapshot.data!;
         final totalTasks = tasks.length;
-        final doneTasks = tasks.where((task) => task.status == TaskStatus.done).length;
+        final doneTasks = tasks
+            .where((task) => task.status == TaskStatus.done)
+            .length;
         final progress = totalTasks > 0 ? doneTasks / totalTasks : 0.0;
 
         final priority1Tasks = tasks.where((t) => t.priority == 1).toList();
         final priority2Tasks = tasks.where((t) => t.priority == 2).toList();
         final priority3Tasks = tasks.where((t) => t.priority == 3).toList();
 
-        final recentIncompleteTasks = tasks.where((t) => t.status != TaskStatus.done).take(4).toList();
+        final recentIncompleteTasks = tasks
+            .where((t) => t.status != TaskStatus.done)
+            .take(4)
+            .toList();
 
         return Scaffold(
           backgroundColor: Colors.white,
           body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24.0,
+              vertical: 16.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
                 _buildBarChartSection(tasks),
                 const SizedBox(height: 30),
-                _buildCircularProgressSection(priority1Tasks, priority2Tasks, priority3Tasks),
+                _buildCircularProgressSection(
+                  priority1Tasks,
+                  priority2Tasks,
+                  priority3Tasks,
+                ),
                 const SizedBox(height: 30),
                 _buildOverallProgressSection(progress),
                 const SizedBox(height: 30),
@@ -64,9 +79,10 @@ class DashboardView extends StatelessWidget {
   }
 
   Widget _buildBarChartSection(List<Task> tasks) {
-      final totalByPriority = (int priority) => tasks.where((t) => t.priority == priority).length.toDouble();
+    double totalByPriority(int priority) =>
+        tasks.where((t) => t.priority == priority).length.toDouble();
 
-      return SizedBox(
+    return SizedBox(
       height: 220,
       child: BarChart(
         BarChartData(
@@ -74,7 +90,12 @@ class DashboardView extends StatelessWidget {
           maxY: (tasks.isNotEmpty ? tasks.length.toDouble() : 10),
           gridData: const FlGridData(show: false),
           borderData: FlBorderData(show: false),
-          titlesData: const FlTitlesData(leftTitles: AxisTitles(), topTitles: AxisTitles(), bottomTitles: AxisTitles(), rightTitles: AxisTitles()),
+          titlesData: const FlTitlesData(
+            leftTitles: AxisTitles(),
+            topTitles: AxisTitles(),
+            bottomTitles: AxisTitles(),
+            rightTitles: AxisTitles(),
+          ),
           barTouchData: BarTouchData(enabled: false),
           barGroups: [
             _makeBarGroup(0, totalByPriority(1), const Color(0xFF536DFE)),
@@ -86,7 +107,7 @@ class DashboardView extends StatelessWidget {
     );
   }
 
-   BarChartGroupData _makeBarGroup(int x, double y, Color color) {
+  BarChartGroupData _makeBarGroup(int x, double y, Color color) {
     return BarChartGroupData(
       x: x,
       barRods: [
@@ -100,18 +121,35 @@ class DashboardView extends StatelessWidget {
     );
   }
 
-  Widget _buildCircularProgressSection(List<Task> p1, List<Task> p2, List<Task> p3) {
-      final getProgress = (List<Task> taskList) {
-        if (taskList.isEmpty) return 0.0;
-        return taskList.where((t) => t.status == TaskStatus.done).length / taskList.length;
-      };
+  Widget _buildCircularProgressSection(
+    List<Task> p1,
+    List<Task> p2,
+    List<Task> p3,
+  ) {
+    double getProgress(List<Task> taskList) {
+      if (taskList.isEmpty) return 0.0;
+      return taskList.where((t) => t.status == TaskStatus.done).length /
+          taskList.length;
+    }
 
-      return Row(
+    return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _ProgressCircle(value: (getProgress(p1)*100).toInt(), label: 'High', color: const Color(0xFF536DFE)),
-        _ProgressCircle(value: (getProgress(p2)*100).toInt(), label: 'Medium', color: const Color(0xFF7C4DFF)),
-        _ProgressCircle(value: (getProgress(p3)*100).toInt(), label: 'Low', color: const Color(0xFFF06292)),
+        _ProgressCircle(
+          value: (getProgress(p1) * 100).toInt(),
+          label: 'High',
+          color: const Color(0xFF536DFE),
+        ),
+        _ProgressCircle(
+          value: (getProgress(p2) * 100).toInt(),
+          label: 'Medium',
+          color: const Color(0xFF7C4DFF),
+        ),
+        _ProgressCircle(
+          value: (getProgress(p3) * 100).toInt(),
+          label: 'Low',
+          color: const Color(0xFFF06292),
+        ),
       ],
     );
   }
@@ -120,7 +158,13 @@ class DashboardView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Overall Progress", style: GoogleFonts.poppins(color: Colors.grey[600], fontWeight: FontWeight.w600)),
+        Text(
+          "Overall Progress",
+          style: GoogleFonts.poppins(
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -131,12 +175,20 @@ class DashboardView extends StatelessWidget {
                   value: progress,
                   minHeight: 10,
                   backgroundColor: Colors.grey[200],
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7C4DFF)),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFF7C4DFF),
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: 15),
-            Text("${(progress * 100).toStringAsFixed(0)}%", style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              "${(progress * 100).toStringAsFixed(0)}%",
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
       ],
@@ -145,29 +197,49 @@ class DashboardView extends StatelessWidget {
 
   Widget _buildScheduleSection(List<Task> tasks) {
     return Column(
-       crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-         Padding(
-           padding: const EdgeInsets.only(bottom: 8.0),
-           child: Text("Pending Tasks", style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold)),
-         ),
-         if(tasks.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Center(child: Text("No pending tasks. Great job!", style: GoogleFonts.poppins(color: Colors.grey[600]))),
-            )
-         else 
-            ...tasks.map((task) => _ScheduleTile(task: task.title, color: _getPriorityColorForTask(task))).toList()
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Text(
+            "Pending Tasks",
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        if (tasks.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Center(
+              child: Text(
+                "No pending tasks. Great job!",
+                style: GoogleFonts.poppins(color: Colors.grey[600]),
+              ),
+            ),
+          )
+        else
+          ...tasks.map(
+            (task) => _ScheduleTile(
+              task: task.title,
+              color: _getPriorityColorForTask(task),
+            ),
+          ),
       ],
     );
   }
 
-   Color _getPriorityColorForTask(Task task) {
+  Color _getPriorityColorForTask(Task task) {
     switch (task.priority) {
-      case 1: return const Color(0xFF536DFE).withOpacity(0.8); 
-      case 2: return const Color(0xFF7C4DFF).withOpacity(0.8);
-      case 3: return const Color(0xFFF06292).withOpacity(0.8);
-      default: return Colors.grey.withOpacity(0.8);
+      case 1:
+        return const Color(0xFF536DFE).withOpacity(0.8);
+      case 2:
+        return const Color(0xFF7C4DFF).withOpacity(0.8);
+      case 3:
+        return const Color(0xFFF06292).withOpacity(0.8);
+      default:
+        return Colors.grey.withOpacity(0.8);
     }
   }
 }
@@ -177,7 +249,11 @@ class _ProgressCircle extends StatelessWidget {
   final String label;
   final Color color;
 
-  const _ProgressCircle({required this.value, required this.label, required this.color});
+  const _ProgressCircle({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -198,14 +274,21 @@ class _ProgressCircle extends StatelessWidget {
               Center(
                 child: Text(
                   "$value%",
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: color),
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: color,
+                  ),
                 ),
               ),
             ],
           ),
         ),
         const SizedBox(height: 10),
-        Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(
+          label,
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
       ],
     );
   }
@@ -226,9 +309,21 @@ class _ScheduleTile extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: color, width: 5)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Text(task, style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: Colors.black87)),
+      child: Text(
+        task,
+        style: GoogleFonts.poppins(
+          fontWeight: FontWeight.w500,
+          color: Colors.black87,
+        ),
+      ),
     );
   }
 }
