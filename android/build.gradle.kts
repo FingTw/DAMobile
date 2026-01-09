@@ -1,3 +1,16 @@
+// --- THÊM KHỐI NÀY LÊN ĐẦU ---
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Đây là "người dẫn đường" giúp app nhận diện file google-services.json
+        classpath("com.google.gms:google-services:4.4.1")
+    }
+}
+// -----------------------------
+
 allprojects {
     repositories {
         google()

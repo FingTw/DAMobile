@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:untitled3/models/project_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/project_details_screen.dart';
+import 'package:untitled3/services/toast_service.dart';
+import 'package:untitled3/widgets/custom_notification_widget.dart';
 
 class ProjectListScreen extends StatefulWidget {
   const ProjectListScreen({super.key});
@@ -106,18 +108,39 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         elevation: 0,
                         shadowColor: Colors.transparent,
                       ),
+                      // ... Trong hàm onPressed
                       onPressed: () {
                         if (nameController.text.isNotEmpty) {
                           final user = FirebaseAuth.instance.currentUser;
                           if (user != null) {
                             int max = int.tryParse(limitController.text) ?? 10;
+
                             DatabaseService(uid: user.uid).createProject(
                               nameController.text,
                               descController.text,
                               max,
-                            );
+                            ).then((_) {
+                              // KHÔNG CẦN check mounted, KHÔNG CẦN context
+                              ToastService.show(
+                                title: "Thành công",
+                                message: "Đã tạo không gian '${nameController.text}'",
+                                type: NotificationType.success,
+                              );
+                            }).catchError((error) {
+                              ToastService.show(
+                                title: "Thất bại",
+                                message: "Lỗi: $error",
+                                type: NotificationType.error,
+                              );
+                            });
                           }
-                          Navigator.of(context).pop();
+                          Navigator.of(context).pop(); // Đóng dialog ngay lập tức vẫn OK
+                        } else {
+                          ToastService.show(
+                            title: "Thiếu thông tin",
+                            message: "Vui lòng nhập tên không gian làm việc",
+                            type: NotificationType.warning,
+                          );
                         }
                       },
                       child: Text(
