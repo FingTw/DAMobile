@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -11,6 +10,8 @@ import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/sprint_details_screen.dart';
 import 'package:untitled3/screens/member_management_screen.dart';
 import 'package:untitled3/screens/user_story_detail_screen.dart';
+import 'package:untitled3/services/toast_service.dart';
+import 'package:untitled3/widgets/custom_notification_widget.dart';
 
 class ProjectDetailsScreen extends StatefulWidget {
   final Project project;
@@ -23,11 +24,74 @@ class ProjectDetailsScreen extends StatefulWidget {
 class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late bool _isLocked;
+  late bool _isPastDeadline;
+
+  final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
+  bool get amIPO => widget.project.ownerId == currentUserId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _updateLockState();
+  }
+
+  void _updateLockState() {
+    _isPastDeadline =
+        widget.project.deadline?.isBefore(DateTime.now()) ?? false;
+    _isLocked = widget.project.isLocked || _isPastDeadline;
+  }
+
+  Future<void> _toggleProjectLock() async {
+    final newLockState = !widget.project.isLocked;
+    await DatabaseService().toggleProjectLock(widget.project.id, newLockState);
+    ToastService.show(
+      title: newLockState ? "Project Locked" : "Project Unlocked",
+      message: newLockState
+          ? "Members can no longer make changes."
+          : "Members can now resume work.",
+      type: newLockState ? NotificationType.warning : NotificationType.success,
+    );
+    if (mounted) {
+      setState(() {
+        _isLocked = newLockState || _isPastDeadline;
+      });
+    }
+  }
+
+  void _showDeleteConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Project"),
+        content: Text(
+            "This will permanently delete '${widget.project.name}' and all its data. This action cannot be undone."),
+        actions: [
+          TextButton(
+            child: const Text("Cancel"),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("Delete"),
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await DatabaseService().deleteProject(widget.project.id);
+              if (mounted) {
+                navigator.pop(); // Close dialog
+                navigator.pop(); // Go back from details screen
+              }
+              ToastService.show(
+                title: "Project Deleted",
+                message: "'${widget.project.name}' was successfully deleted.",
+                type: NotificationType.error,
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -45,6 +109,8 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_isLocked) const Icon(Icons.lock, color: Colors.orange, size: 20),
+            const SizedBox(width: 8),
             Text(
               widget.project.name,
               style: GoogleFonts.inter(
@@ -53,20 +119,10 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
                 fontSize: 16,
               ),
             ),
-            const Icon(Icons.arrow_drop_down, color: Colors.black),
           ],
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.content_copy),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: widget.project.joinCode));
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text("Code copied!")));
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.people_outline),
             onPressed: () => Navigator.push(
@@ -76,17 +132,32 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
               ),
             ),
           ),
+          if (amIPO)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'lock') _toggleProjectLock();
+                if (value == 'delete') _showDeleteConfirmationDialog();
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'lock',
+                  child: Text(widget.project.isLocked
+                      ? "Re-open Project"
+                      : "Mark as Completed"),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text("Delete Project",
+                      style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
         ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: const Color(0xFF2563EB), // Blue 600
           unselectedLabelColor: Colors.grey[600],
-          labelStyle: GoogleFonts.inter(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
           indicatorColor: const Color(0xFF2563EB),
-          indicatorWeight: 2,
           tabs: const [
             Tab(text: 'Tóm tắt'),
             Tab(text: 'Bảng thông tin'), // Sprints
@@ -94,12 +165,31 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          SummaryTab(project: widget.project),
-          SprintsTab(project: widget.project),
-          BacklogTab(project: widget.project),
+          if (_isLocked)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12.0),
+              color: _isPastDeadline ? Colors.red.shade700 : Colors.amber.shade700,
+              child: Text(
+                _isPastDeadline
+                    ? "Project is past its deadline and is now archived."
+                    : "This project is marked as completed and is now read-only.",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                SummaryTab(project: widget.project, isLocked: _isLocked),
+                SprintsTab(project: widget.project, isLocked: _isLocked),
+                BacklogTab(project: widget.project, isLocked: _isLocked),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -107,11 +197,12 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
 }
 
 // ---------------------------------------------------------------------------
-// SUMMARY TAB (LOGIC RESTORED)
+// SUMMARY TAB
 // ---------------------------------------------------------------------------
 class SummaryTab extends StatelessWidget {
   final Project project;
-  const SummaryTab({super.key, required this.project});
+  final bool isLocked;
+  const SummaryTab({super.key, required this.project, required this.isLocked});
 
   @override
   Widget build(BuildContext context) {
@@ -122,17 +213,18 @@ class SummaryTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // This would need a stateful parent to be interactive
           _buildDropdownFilter(),
           const SizedBox(height: 16),
 
+          // This section should ideally be refactored to be cleaner
+          // and handle loading/error states more gracefully.
           StreamBuilder<List<Sprint>>(
             stream: DatabaseService(uid: uid).getSprints(project.id),
             builder: (context, sprintSnapshot) {
-              if (!sprintSnapshot.hasData)
-                return const Center(child: CircularProgressIndicator());
+              if (!sprintSnapshot.hasData) return const Center(child: CircularProgressIndicator());
               final sprints = sprintSnapshot.data!;
               final now = DateTime.now();
-              // Active Sprint
               final activeSprint = sprints.firstWhere(
                 (s) => s.startDate.isBefore(now) && s.endDate.isAfter(now),
                 orElse: () =>
@@ -148,28 +240,15 @@ class SummaryTab extends StatelessWidget {
                 );
               }
 
-              return StreamBuilder(
-                stream: DatabaseService(
-                  uid: uid,
-                ).getTasksForSprint(project.id, activeSprint.id),
-                builder: (context, taskSnapshot) {
-                  if (!taskSnapshot.hasData)
-                    return const Center(child: CircularProgressIndicator());
-                  final tasks = taskSnapshot.data as List; // ProjectTasks
+              return StreamBuilder<List<UserStory>>( // Assuming tasks are user stories now
+                stream: DatabaseService(uid: uid).getStoriesForSprint(project.id, activeSprint.id),
+                builder: (context, storySnapshot) {
+                  if (!storySnapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  final stories = storySnapshot.data!;
 
-                  int done = tasks
-                      .where(
-                        (t) =>
-                            t.status.toString().contains('done') ||
-                            t.status.toString().contains('verified'),
-                      )
-                      .length;
-                  int created = tasks.length;
-                  // 'Updated' and 'Due' are mocked effectively as we don't track update time perfectly or due date yet
-                  // We will map 'In Progress' to Updated roughly for visual feedback
-                  int inProgress = tasks
-                      .where((t) => t.status.toString().contains('inProgress'))
-                      .length;
+                  int done = stories.where((t) => t.status == UserStoryStatus.done).length;
+                  int inProgress = stories.where((t) => t.status == UserStoryStatus.inProgress).length;
+                  int total = stories.length;
 
                   return Column(
                     children: [
@@ -181,7 +260,7 @@ class SummaryTab extends StatelessWidget {
                         childAspectRatio: 1.4,
                         physics: const NeverScrollableScrollPhysics(),
                         children: [
-                          _buildStatCard(
+                           _buildStatCard(
                             icon: Icons.check,
                             iconColor: const Color(0xFF10B981),
                             bgColor: const Color(0xFFD1FAE5),
@@ -201,7 +280,7 @@ class SummaryTab extends StatelessWidget {
                             icon: Icons.add,
                             iconColor: const Color(0xFF8B5CF6),
                             bgColor: const Color(0xFFEDE9FE), // Violet 100
-                            count: "$created total",
+                            count: "$total total",
                             label: "in current sprint",
                             hasSparkle: false,
                           ),
@@ -210,15 +289,14 @@ class SummaryTab extends StatelessWidget {
                             iconColor: const Color(0xFFEF4444), // Red 500
                             bgColor: const Color(0xFFFEE2E2), // Red 100
                             count:
-                                "${DateFormat.MMMd().format(activeSprint.endDate)}",
+                                DateFormat.MMMd().format(activeSprint.endDate),
                             label: "Sprint End Date",
                             hasSparkle: false,
                           ),
                         ],
                       ),
                       const SizedBox(height: 24),
-                      // Donut Chart
-                      _buildOverallStatusChart(tasks),
+                      _buildOverallStatusChart(stories),
                     ],
                   );
                 },
@@ -230,19 +308,11 @@ class SummaryTab extends StatelessWidget {
     );
   }
 
-  Widget _buildOverallStatusChart(List tasks) {
-    int todo = tasks.where((t) => t.status.toString().contains('todo')).length;
-    int inProgress = tasks
-        .where((t) => t.status.toString().contains('inProgress'))
-        .length;
-    int done = tasks
-        .where(
-          (t) =>
-              t.status.toString().contains('done') ||
-              t.status.toString().contains('verified'),
-        )
-        .length;
-    int total = tasks.length;
+  Widget _buildOverallStatusChart(List<UserStory> stories) {
+    int todo = stories.where((t) => t.status == UserStoryStatus.todo || t.status == UserStoryStatus.inSprint).length;
+    int inProgress = stories.where((t) => t.status == UserStoryStatus.inProgress).length;
+    int done = stories.where((t) => t.status == UserStoryStatus.done).length;
+    int total = stories.length;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -424,20 +494,19 @@ class SummaryTab extends StatelessWidget {
     );
   }
 }
-
 // ---------------------------------------------------------------------------
-// BACKLOG TAB (LOGIC RESTORED & COMBINED)
+// BACKLOG TAB
 // ---------------------------------------------------------------------------
 class BacklogTab extends StatefulWidget {
   final Project project;
-  const BacklogTab({super.key, required this.project});
+  final bool isLocked;
+  const BacklogTab({super.key, required this.project, required this.isLocked});
   @override
   State<BacklogTab> createState() => _BacklogTabState();
 }
 
 class _BacklogTabState extends State<BacklogTab> {
-  // State to track expanded groups
-  Set<String> expandedGroups = {"Backlog"}; // Default expand Backlog
+  Set<String> expandedGroups = {"Backlog"};
 
   @override
   Widget build(BuildContext context) {
@@ -451,23 +520,18 @@ class _BacklogTabState extends State<BacklogTab> {
             _buildSearchAndFilter(),
             const SizedBox(height: 16),
 
-            // 1. ALL SPRINTS SECTION (Active & Upcoming)
             StreamBuilder<List<Sprint>>(
               stream: DatabaseService(uid: uid).getSprints(widget.project.id),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const SizedBox();
+                if (!snapshot.hasData) return const SizedBox.shrink();
                 final sprints = snapshot.data!;
-                // Show all sprints, or filter out only 'completed' ones if you have that status
-                // For now, showing all to ensure visibility.
-
-                if (sprints.isEmpty) return const SizedBox();
+                if (sprints.isEmpty) return const SizedBox.shrink();
 
                 return Column(
                   children: sprints.map((sprint) {
                     return StreamBuilder<List<UserStory>>(
-                      stream: DatabaseService(
-                        uid: uid,
-                      ).getStoriesForSprint(widget.project.id, sprint.id),
+                      stream: DatabaseService(uid: uid)
+                          .getStoriesForSprint(widget.project.id, sprint.id),
                       builder: (context, storySnap) {
                         final stories = storySnap.data ?? [];
                         return Padding(
@@ -487,7 +551,6 @@ class _BacklogTabState extends State<BacklogTab> {
               },
             ),
 
-            // 2. BACKLOG SECTION
             StreamBuilder<List<UserStory>>(
               stream: DatabaseService(uid: uid).getBacklog(widget.project.id),
               builder: (context, snapshot) {
@@ -504,7 +567,7 @@ class _BacklogTabState extends State<BacklogTab> {
       ),
     );
   }
-
+  
   Widget _buildSearchAndFilter() {
     return Column(
       children: [
@@ -515,6 +578,7 @@ class _BacklogTabState extends State<BacklogTab> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: TextField(
+            enabled: !widget.isLocked,
             decoration: InputDecoration(
               icon: const Icon(Icons.search, color: Colors.grey),
               hintText: "Tìm kiếm hạng mục công việc",
@@ -555,7 +619,6 @@ class _BacklogTabState extends State<BacklogTab> {
     );
   }
 
-  // Widget for Sprint Tasks (now User Stories)
   Widget _buildSprintGroup(
     String title,
     String subtitle,
@@ -575,10 +638,11 @@ class _BacklogTabState extends State<BacklogTab> {
           InkWell(
             onTap: () {
               setState(() {
-                if (isExpanded)
+                if (isExpanded) {
                   expandedGroups.remove(docId);
-                else
+                } else {
                   expandedGroups.add(docId);
+                }
               });
             },
             child: Padding(
@@ -643,14 +707,7 @@ class _BacklogTabState extends State<BacklogTab> {
                       style: GoogleFonts.inter(color: Colors.grey),
                     ),
                   ),
-                ...stories.map<Widget>((s) => _buildStoryItem(s)).toList(),
-                const Divider(height: 1),
-                // Hide Create Task button for now inside filters to avoid confusion or keep it if it creates sub-tasks?
-                // Users said tasks ARE user stories.
-                // So adding a "task" here is ambiguous.
-                // Better to have "Add Story" or nothing.
-                // I will hide it or comment it out until clarified.
-                // _buildCreateTaskButton(isSprint, docId),
+                ...stories.map<Widget>((s) => _buildStoryItem(s)),
               ],
             ),
         ],
@@ -658,7 +715,6 @@ class _BacklogTabState extends State<BacklogTab> {
     );
   }
 
-  // Widget for Backlog Stories
   Widget _buildBacklogGroup(
     String title,
     String subtitle,
@@ -675,10 +731,11 @@ class _BacklogTabState extends State<BacklogTab> {
           InkWell(
             onTap: () {
               setState(() {
-                if (isExpanded)
+                if (isExpanded) {
                   expandedGroups.remove('Backlog');
-                else
+                } else {
                   expandedGroups.add('Backlog');
+                }
               });
             },
             child: Padding(
@@ -730,9 +787,9 @@ class _BacklogTabState extends State<BacklogTab> {
                       style: GoogleFonts.inter(color: Colors.grey),
                     ),
                   ),
-                ...stories.map((s) => _buildStoryItem(s)).toList(),
+                ...stories.map((s) => _buildStoryItem(s)),
                 const Divider(height: 1),
-                _buildCreateTaskButton(false, ''),
+                if (!widget.isLocked) _buildCreateTaskButton(),
               ],
             ),
         ],
@@ -778,7 +835,7 @@ class _BacklogTabState extends State<BacklogTab> {
             const Icon(
               Icons.check_box_outline_blank,
               color: Colors.grey,
-            ), // Stories in backlog usually TODO
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -793,25 +850,20 @@ class _BacklogTabState extends State<BacklogTab> {
               ),
             ),
             const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.input, size: 16, color: Colors.blue),
-              onPressed: () => _showAddToSprintDialog(story),
-            ),
+            if (!widget.isLocked)
+              IconButton(
+                icon: const Icon(Icons.input, size: 16, color: Colors.blue),
+                onPressed: () => _showAddToSprintDialog(story),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCreateTaskButton(bool isSprint, String parentId) {
+  Widget _buildCreateTaskButton() {
     return InkWell(
-      onTap: () {
-        if (isSprint) {
-          _showAddTaskDialog(parentId);
-        } else {
-          _showAddStoryDialog();
-        }
-      },
+      onTap: _showAddStoryDialog,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Container(
@@ -823,7 +875,7 @@ class _BacklogTabState extends State<BacklogTab> {
           ),
           child: Center(
             child: Text(
-              isSprint ? "+ Tạo công việc (Task)" : "+ Tạo yêu cầu (Story)",
+              "+ Tạo yêu cầu (Story)",
               style: GoogleFonts.inter(fontWeight: FontWeight.w500),
             ),
           ),
@@ -860,10 +912,11 @@ class _BacklogTabState extends State<BacklogTab> {
                     uid: FirebaseAuth.instance.currentUser?.uid,
                   ).getSprints(widget.project.id),
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData || snapshot.data!.isEmpty)
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
                       return const Center(
                         child: Text("No active sprints found."),
                       );
+                    }
                     final sprints = snapshot.data!;
                     return ListView.builder(
                       itemCount: sprints.length,
@@ -872,6 +925,7 @@ class _BacklogTabState extends State<BacklogTab> {
                         return ListTile(
                           title: Text(sprint.name),
                           onTap: () async {
+                            final navigator = Navigator.of(context);
                             await DatabaseService(
                               uid: FirebaseAuth.instance.currentUser?.uid,
                             ).addStoryToSprint(
@@ -879,7 +933,7 @@ class _BacklogTabState extends State<BacklogTab> {
                               sprint.id,
                               story.id,
                             );
-                            if (mounted) Navigator.of(context).pop();
+                            if (mounted) navigator.pop();
                           },
                         );
                       },
@@ -894,7 +948,7 @@ class _BacklogTabState extends State<BacklogTab> {
     );
   }
 
-  void _showAddStoryDialog() {
+   void _showAddStoryDialog() {
     final titleController = TextEditingController();
     final pointsController = TextEditingController();
 
@@ -982,137 +1036,20 @@ class _BacklogTabState extends State<BacklogTab> {
       ),
     );
   }
-
-  void _showAddTaskDialog(String sprintId) {
-    String? selectedStoryId;
-    final titleController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
-          ),
-          child: StreamBuilder<List<UserStory>>(
-            stream: DatabaseService().getStoriesForSprint(
-              widget.project.id,
-              sprintId,
-            ),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 20.0),
-                  child: const Text("No stories in sprint. Add stories first."),
-                );
-              }
-              final stories = snapshot.data!;
-              return StatefulBuilder(
-                builder: (context, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Add Task to Sprint",
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: titleController,
-                        decoration: InputDecoration(
-                          labelText: "Task Title",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: "Select User Story",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        value: selectedStoryId,
-                        items: stories
-                            .map(
-                              (s) => DropdownMenuItem(
-                                value: s.id,
-                                child: Text(s.title),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => selectedStoryId = v),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          onPressed: () {
-                            if (titleController.text.isNotEmpty &&
-                                selectedStoryId != null) {
-                              DatabaseService().addProjectTask(
-                                widget.project.id,
-                                sprintId,
-                                selectedStoryId!,
-                                titleController.text,
-                              );
-                              Navigator.pop(context);
-                            }
-                          },
-                          child: const Text(
-                            "Add",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
-// SPRINTS TAB (Restored)
+// SPRINTS TAB
 // ---------------------------------------------------------------------------
 class SprintsTab extends StatefulWidget {
   final Project project;
-  const SprintsTab({super.key, required this.project});
+  final bool isLocked;
+  const SprintsTab({super.key, required this.project, required this.isLocked});
   @override
   State<SprintsTab> createState() => _SprintsTabState();
 }
 
 class _SprintsTabState extends State<SprintsTab> {
-  // Restore Sprints List logic
   Future<void> _showAddSprintDialog() async {
     final nameController = TextEditingController();
     DateTime startDate = DateTime.now();
@@ -1194,7 +1131,7 @@ class _SprintsTabState extends State<SprintsTab> {
                       },
                       icon: const Icon(Icons.calendar_today, size: 16),
                       label: Text(DateFormat.yMMMd().format(endDate)),
-                      style: OutlinedButton.styleFrom(
+                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -1254,8 +1191,9 @@ class _SprintsTabState extends State<SprintsTab> {
           uid: FirebaseAuth.instance.currentUser?.uid,
         ).getSprints(widget.project.id),
         builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data!.isEmpty)
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text("No sprints."));
+          }
           final sprints = snapshot.data!;
           return ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -1279,15 +1217,19 @@ class _SprintsTabState extends State<SprintsTab> {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => SprintDetailsScreen(
-                          project: widget.project,
-                          sprint: sprint,
-                        ),
-                      ),
-                    );
+                     if (!widget.isLocked) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SprintDetailsScreen(
+                              project: widget.project,
+                              sprint: sprint,
+                            ),
+                          ),
+                        );
+                     } else {
+                        ToastService.show(title: "Project Locked", message: "This project is read-only.", type: NotificationType.info);
+                     }
                   },
                 ),
               );
@@ -1295,8 +1237,8 @@ class _SprintsTabState extends State<SprintsTab> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: "add_sprint_fab_2",
+      floatingActionButton: widget.isLocked ? null : FloatingActionButton(
+        heroTag: "add_sprint_fab",
         backgroundColor: const Color(0xFF1F2937),
         onPressed: _showAddSprintDialog,
         child: const Icon(Icons.add),

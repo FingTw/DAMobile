@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:untitled3/models/task_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:collection/collection.dart';
+import 'package:untitled3/services/toast_service.dart';
+import 'package:untitled3/widgets/custom_notification_widget.dart';
 
 class TaskScreen extends StatefulWidget {
   const TaskScreen({super.key});
@@ -71,6 +73,11 @@ class _TaskScreenState extends State<TaskScreen> {
                     DatabaseService(
                       uid: user.uid,
                     ).addPersonalTask(titleController.text, selectedPriority);
+                    ToastService.show(
+                      title: "Task Added",
+                      message: "New personal task has been created.",
+                      type: NotificationType.success,
+                    );
                   }
                   Navigator.of(context).pop();
                 }
@@ -145,7 +152,7 @@ class _TaskScreenState extends State<TaskScreen> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.purple.withOpacity(0.3),
+                            color: Colors.purple.withValues(alpha: 0.3),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -283,7 +290,7 @@ class _TaskListItem extends StatelessWidget {
       elevation: 4,
       margin: const EdgeInsets.only(bottom: 16),
       color: Colors.white,
-      shadowColor: Colors.black.withOpacity(0.1),
+      shadowColor: Colors.black.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
@@ -293,6 +300,15 @@ class _TaskListItem extends StatelessWidget {
             DatabaseService(
               uid: user.uid,
             ).updatePersonalTaskStatus(task.id, newStatus);
+
+            // Show notification on task completion
+            if (newStatus == TaskStatus.done) {
+              ToastService.show(
+                title: "Task Completed!",
+                message: "'${task.title}' marked as done.",
+                type: NotificationType.success,
+              );
+            }
           }
         },
         child: Padding(
@@ -323,6 +339,10 @@ class _TaskListItem extends StatelessWidget {
                 onPressed: () {
                   if (user != null) {
                     DatabaseService(uid: user.uid).deletePersonalTask(task.id);
+                    ToastService.show(
+                        title: "Task Deleted",
+                        message: "'${task.title}' has been removed.",
+                        type: NotificationType.warning);
                   }
                 },
                 tooltip: "Delete Task",

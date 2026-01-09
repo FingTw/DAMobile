@@ -1,4 +1,5 @@
 
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:untitled3/services/database_service.dart';
@@ -36,10 +37,10 @@ class AuthService {
       }
       return null; // Success
     } on FirebaseAuthException catch (e) {
-      print("FirebaseAuthException in signInWithGoogle: ${e.code}");
+      debugPrint("FirebaseAuthException in signInWithGoogle: ${e.code}");
       return e.message ?? "An error occurred during Google sign-in.";
     } catch (e) {
-      print("An unexpected error occurred in signInWithGoogle: $e");
+      debugPrint("An unexpected error occurred in signInWithGoogle: $e");
       return 'An unexpected error occurred. Please try again.';
     }
   }
@@ -49,13 +50,13 @@ class AuthService {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
       return null; // Success
     } on FirebaseAuthException catch (e) {
-      print("FirebaseAuthException in signInWithEmailAndPassword: ${e.code}");
+      debugPrint("FirebaseAuthException in signInWithEmailAndPassword: ${e.code}");
       if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
         return 'Invalid email or password. Please try again.';
       }
       return e.message ?? "An error occurred during sign-in.";
     } catch (e) {
-      print("An unexpected error occurred in signInWithEmailAndPassword: $e");
+      debugPrint("An unexpected error occurred in signInWithEmailAndPassword: $e");
       return 'An unexpected error occurred. Please try again.';
     }
   }
@@ -69,13 +70,13 @@ class AuthService {
       }
       return null; // Success
     } on FirebaseAuthException catch (e) {
-      print("FirebaseAuthException in registerWithEmailAndPassword: ${e.code}");
+      debugPrint("FirebaseAuthException in registerWithEmailAndPassword: ${e.code}");
       if (e.code == 'email-already-in-use') {
         return 'This email address is already in use by another account.';
       }
       return e.message ?? "An error occurred during registration.";
     } catch (e) {
-      print("An unexpected error occurred in registerWithEmailAndPassword: $e");
+      debugPrint("An unexpected error occurred in registerWithEmailAndPassword: $e");
       return 'An unexpected error occurred. Please try again.';
     }
   }
@@ -85,7 +86,7 @@ class AuthService {
       await _googleSignIn.signOut();
       await _auth.signOut();
     } catch (e) {
-      print("Error signing out: $e");
+      debugPrint("Error signing out: $e");
     }
   }
 }

@@ -125,7 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(15),
         gradient: const LinearGradient(colors: [Color(0xFF8E2DE2), Color(0xFF4A00E0)]),
-        boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.3), spreadRadius: 1, blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.3), spreadRadius: 1, blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ElevatedButton(
         onPressed: _isLoading ? null : _login,
@@ -148,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(50),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), spreadRadius: 1, blurRadius: 10)],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), spreadRadius: 1, blurRadius: 10)],
           ),
           child: Image.asset('assets/google_logo.png', height: 24),
         ),

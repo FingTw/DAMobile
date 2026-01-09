@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/services/toast_service.dart';
+import 'package:untitled3/widgets/custom_notification_widget.dart';
 
 class UserStoryDetailScreen extends StatefulWidget {
   final UserStory story;
@@ -21,17 +23,15 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
   late TextEditingController _pointsController;
+  late UserStoryStatus _currentStatus;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.story.title);
-    _descriptionController = TextEditingController(
-      text: widget.story.description,
-    );
-    _pointsController = TextEditingController(
-      text: widget.story.points.toString(),
-    );
+    _descriptionController = TextEditingController(text: widget.story.description);
+    _pointsController = TextEditingController(text: widget.story.points.toString());
+    _currentStatus = widget.story.status;
   }
 
   @override
@@ -42,8 +42,23 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
     super.dispose();
   }
 
-  // Cập nhật Status
-  void _updateStatus() {
+  void _updateStatus(UserStoryStatus newStatus) {
+    DatabaseService().updateUserStory(
+      widget.projectId,
+      widget.story.id,
+      status: newStatus,
+    );
+    setState(() {
+      _currentStatus = newStatus;
+    });
+    Navigator.pop(context);
+    ToastService.show(
+        title: "Status Updated",
+        message: "Story status changed to ${newStatus.name}.",
+        type: NotificationType.info);
+  }
+
+  void _showStatusMenu() {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -54,41 +69,22 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Chọn trạng thái",
-                style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                "Change Status",
+                style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 20),
-              // Backlog
-              ListTile(
-                title: const Text("Backlog"),
-                onTap: () {
-                  DatabaseService().updateUserStory(
-                    widget.projectId,
-                    widget.story.id,
-                    status: UserStoryStatus.backlog,
-                  );
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
-              // Done
-              ListTile(
-                title: const Text("Done"), // Hoặc trạng thái khác nếu có
-                onTap: () {
-                  DatabaseService().updateUserStory(
-                    widget.projectId,
-                    widget.story.id,
-                    status: UserStoryStatus.done,
-                  );
-                  Navigator.pop(context);
-                  setState(() {});
-                },
-              ),
+              const SizedBox(height: 10),
+              ...UserStoryStatus.values.map((status) {
+                return ListTile(
+                  title: Text(status.name),
+                  onTap: () => _updateStatus(status),
+                  trailing: _currentStatus == status
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                );
+              }),
             ],
           ),
         );
@@ -103,6 +99,11 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
       title: _titleController.text,
       description: _descriptionController.text,
       points: int.tryParse(_pointsController.text) ?? 0,
+    );
+    ToastService.show(
+      title: "Story Saved",
+      message: "Your changes have been saved successfully.",
+      type: NotificationType.success,
     );
   }
 
@@ -136,7 +137,6 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -151,15 +151,10 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
               maxLines: null,
             ),
             const SizedBox(height: 20),
-
-            // Points & Status Row
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(8),
@@ -186,23 +181,16 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
-                  onTap: _updateStatus,
+                  onTap: _showStatusMenu,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                     ),
                     child: Text(
-                      widget.story.status
-                          .toString()
-                          .split('.')
-                          .last
-                          .toUpperCase(),
+                      _currentStatus.name.toUpperCase(),
                       style: GoogleFonts.inter(
                         color: Colors.blue,
                         fontWeight: FontWeight.bold,
@@ -212,10 +200,7 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 30),
-
-            // Description
             Text(
               "Description",
               style: GoogleFonts.inter(

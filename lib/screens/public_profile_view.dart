@@ -78,7 +78,7 @@ class PublicProfileView extends StatelessWidget {
     return Chip(
       avatar: Icon(icon, color: Colors.purple, size: 20),
       label: Text(text, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-      backgroundColor: Colors.purple.withOpacity(0.1),
+      backgroundColor: Colors.purple.withValues(alpha: 0.1),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     );
   }

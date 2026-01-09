@@ -10,18 +10,41 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<Scaffol
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
+  // Ensure Flutter is ready.
   WidgetsFlutterBinding.ensureInitialized();
-  // We don't await here anymore. The FutureBuilder will handle it.
-  runApp(MyApp()); // FIX: Removed const
+  // Run the app.
+  runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  MyApp({super.key}); // FIX: Removed const
+// 1. Converted to a StatefulWidget
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
 
-  // Create the initialization Future outside of build to avoid re-initialization on rebuilds
-  final Future<FirebaseApp> _initialization = Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  // 2. Created a Future to hold the initialization state.
+  // This prevents re-initialization on rebuilds.
+  late final Future<void> _initializationFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // 3. Moved initialization logic into initState to run it only once.
+    _initializationFuture = _initializeServices();
+  }
+
+  // This method now encapsulates all async initialization.
+  Future<void> _initializeServices() async {
+    // Initialize Firebase first.
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    // Once Firebase is ready, initialize the notification service.
+    await NotificationService.initOneSignal();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,22 +57,21 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
+      // 4. The FutureBuilder now waits for our initialization Future to complete.
       home: FutureBuilder(
-        future: _initialization,
+        future: _initializationFuture,
         builder: (context, snapshot) {
-          // --- Check for errors ---
+          // --- Check for errors during initialization ---
           if (snapshot.hasError) {
             return ErrorScreen(errorMessage: snapshot.error.toString());
           }
 
           // --- Once complete, show your application ---
           if (snapshot.connectionState == ConnectionState.done) {
-            // Initialize OneSignal AFTER Firebase is confirmed to be working
-            NotificationService.initOneSignal();
             return const Wrapper();
           }
 
-          // --- Otherwise, show something whilst waiting for initialization to complete ---
+          // --- Otherwise, show a loading screen ---
           return const Scaffold(
             backgroundColor: Colors.white,
             body: Center(

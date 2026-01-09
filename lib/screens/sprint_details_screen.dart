@@ -7,6 +7,8 @@ import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/screens/user_story_detail_screen.dart';
 import 'package:untitled3/models/user_model.dart';
 import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/services/toast_service.dart';
+import 'package:untitled3/widgets/custom_notification_widget.dart';
 
 class SprintDetailsScreen extends StatefulWidget {
   final Project project;
@@ -69,6 +71,14 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
         story.id,
         status: newStatus,
       );
+      // Show notification on task completion
+      if (newStatus == UserStoryStatus.done) {
+        ToastService.show(
+          title: "Story Completed!",
+          message: "'${story.title}' moved to Done.",
+          type: NotificationType.success,
+        );
+      }
     }
   }
 
@@ -96,14 +106,16 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
               widget.sprint.id,
             ),
             builder: (context, snapshot) {
-              if (!snapshot.hasData)
+              if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               final stories = snapshot.data!;
-              if (stories.isEmpty)
+              if (stories.isEmpty) {
                 return const Padding(
                   padding: EdgeInsets.only(bottom: 20),
                   child: Text("Vui lòng thêm User Story vào Sprint trước."),
                 );
+              }
 
               return StatefulBuilder(
                 builder: (context, setState) {
@@ -126,6 +138,7 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
+                        // ignore: deprecated_member_use
                         value: selectedStoryId,
                         items: stories
                             .map(
@@ -161,13 +174,20 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                           onPressed: () {
                             if (titleController.text.isNotEmpty &&
                                 selectedStoryId != null) {
+                              final navigator = Navigator.of(context);
                               DatabaseService().addProjectTask(
                                 widget.project.id,
                                 widget.sprint.id,
                                 selectedStoryId!,
                                 titleController.text,
                               );
-                              Navigator.pop(context);
+                              navigator.pop();
+                              ToastService.show(
+                                title: "Task Created",
+                                message:
+                                    "New task added to the current sprint.",
+                                type: NotificationType.success,
+                              );
                             }
                           },
                           child: const Text(
@@ -228,8 +248,9 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
       body: FutureBuilder<List<UserModel>>(
         future: _projectMembers,
         builder: (context, membersSnapshot) {
-          if (!membersSnapshot.hasData)
+          if (!membersSnapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
           final members = membersSnapshot.data!;
 
           return StreamBuilder<List<UserStory>>(
@@ -238,8 +259,9 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
               widget.sprint.id,
             ),
             builder: (context, storySnapshot) {
-              if (storySnapshot.connectionState == ConnectionState.waiting)
+              if (storySnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
+              }
               final stories = storySnapshot.data ?? [];
 
               List<DragAndDropList> contents = [
@@ -405,7 +427,7 @@ class _StoryCard extends StatelessWidget {
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -423,7 +445,7 @@ class _StoryCard extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
+                    color: Colors.blue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(

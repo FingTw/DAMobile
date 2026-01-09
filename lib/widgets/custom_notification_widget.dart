@@ -64,10 +64,10 @@ class CustomNotificationWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: _bgColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _borderColor.withOpacity(0.5)),
+          border: Border.all(color: _borderColor.withValues(alpha: 0.5)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )

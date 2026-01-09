@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'package:untitled3/models/project_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/project_details_screen.dart';
@@ -18,9 +19,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   void _showCreateProjectDialog() {
     final TextEditingController nameController = TextEditingController();
     final TextEditingController descController = TextEditingController();
-    final TextEditingController limitController = TextEditingController(
-      text: "10",
-    );
+    DateTime? selectedDeadline;
 
     showDialog(
       context: context,
@@ -30,138 +29,167 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
           backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Tạo không gian", // Create Workspace
-                  style: GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1E1E1E),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Tên không gian *',
-                    labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.blue),
-                    ),
-                    fillColor: Colors.white,
-                    filled: true,
-                  ),
-                  autofocus: true,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: descController,
-                  decoration: InputDecoration(
-                    labelText: 'Mô tả (Tùy chọn)',
-                    labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Only show technical fields if necessary, user screenshots show simple form
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      child: Text(
-                        'Hủy',
+          child: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Tạo không gian", // Create Workspace
                         style: GoogleFonts.inter(
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w500,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1E1E1E),
                         ),
                       ),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent, // Minimalist
-                        elevation: 0,
-                        shadowColor: Colors.transparent,
+                      const SizedBox(height: 24),
+                      TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Tên không gian *',
+                          labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Colors.blue),
+                          ),
+                          fillColor: Colors.white,
+                          filled: true,
+                        ),
+                        autofocus: true,
                       ),
-                      // ... Trong hàm onPressed
-                      onPressed: () {
-                        if (nameController.text.isNotEmpty) {
-                          final user = FirebaseAuth.instance.currentUser;
-                          if (user != null) {
-                            int max = int.tryParse(limitController.text) ?? 10;
-
-                            DatabaseService(uid: user.uid).createProject(
-                              nameController.text,
-                              descController.text,
-                              max,
-                            ).then((_) {
-                              // KHÔNG CẦN check mounted, KHÔNG CẦN context
-                              ToastService.show(
-                                title: "Thành công",
-                                message: "Đã tạo không gian '${nameController.text}'",
-                                type: NotificationType.success,
-                              );
-                            }).catchError((error) {
-                              ToastService.show(
-                                title: "Thất bại",
-                                message: "Lỗi: $error",
-                                type: NotificationType.error,
-                              );
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: descController,
+                        decoration: InputDecoration(
+                          labelText: 'Mô tả (Tùy chọn)',
+                          labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton.icon(
+                        icon: const Icon(Icons.calendar_today, color: Colors.blue),
+                        label: Text(
+                          selectedDeadline == null
+                              ? 'Chọn thời hạn (Tùy chọn)'
+                              : 'Hạn chót: ${DateFormat.yMMMd().format(selectedDeadline!)}',
+                          style: GoogleFonts.inter(color: Colors.blue),
+                        ),
+                        onPressed: () async {
+                          final pickedDate = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime(2101),
+                          );
+                          if (pickedDate != null) {
+                            setDialogState(() {
+                              selectedDeadline = pickedDate;
                             });
                           }
-                          Navigator.of(context).pop(); // Đóng dialog ngay lập tức vẫn OK
-                        } else {
-                          ToastService.show(
-                            title: "Thiếu thông tin",
-                            message: "Vui lòng nhập tên không gian làm việc",
-                            type: NotificationType.warning,
-                          );
-                        }
-                      },
-                      child: Text(
-                        'Tạo',
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue,
-                        ),
+                        },
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            child: Text(
+                              'Hủy',
+                              style: GoogleFonts.inter(
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue, // Solid color for clarity
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: () {
+                              if (nameController.text.isNotEmpty) {
+                                final user = FirebaseAuth.instance.currentUser;
+                                if (user != null) {
+                                  DatabaseService(uid: user.uid)
+                                      .createProject(
+                                    nameController.text,
+                                    descController.text,
+                                    10, // Default max members
+                                    selectedDeadline,
+                                  )
+                                      .then((_) {
+                                    if (mounted && context.mounted) {
+                                      Navigator.of(context).pop(); // Close dialog on success
+                                    }
+                                    ToastService.show(
+                                      title: "Thành công",
+                                      message:
+                                          "Đã tạo không gian '${nameController.text}'",
+                                      type: NotificationType.success,
+                                    );
+                                  }).catchError((error) {
+                                    ToastService.show(
+                                      title: "Thất bại",
+                                      message: "Lỗi: $error",
+                                      type: NotificationType.error,
+                                    );
+                                  });
+                                }
+                              } else {
+                                ToastService.show(
+                                  title: "Thiếu thông tin",
+                                  message: "Vui lòng nhập tên không gian làm việc",
+                                  type: NotificationType.warning,
+                                );
+                              }
+                            },
+                            child: Text(
+                              'Tạo',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
         );
       },
     );
   }
 
-  // Join Dialog
   void _showJoinDialog() {
     final TextEditingController codeController = TextEditingController();
     showDialog(
@@ -218,20 +246,32 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                     const SizedBox(width: 8),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        elevation: 0,
-                        shadowColor: Colors.transparent,
+                        backgroundColor: Colors.blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                       onPressed: () async {
                         if (codeController.text.isNotEmpty) {
+                          final navigator = Navigator.of(context);
                           String res = await DatabaseService(
                             uid: FirebaseAuth.instance.currentUser?.uid,
                           ).joinProjectByCode(codeController.text);
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(
-                              context,
-                            ).showSnackBar(SnackBar(content: Text(res)));
+                          if (mounted && context.mounted) {
+                            navigator.pop();
+                          }
+                          if (res == "Success") {
+                            ToastService.show(
+                              title: "Thành công!",
+                              message: "Bạn đã tham gia không gian làm việc.",
+                              type: NotificationType.success,
+                            );
+                          } else {
+                            ToastService.show(
+                              title: "Thất bại",
+                              message: res, // Show the error message from the service
+                              type: NotificationType.error,
+                            );
                           }
                         }
                       },
@@ -239,7 +279,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         'Tham gia',
                         style: GoogleFonts.inter(
                           fontWeight: FontWeight.w600,
-                          color: Colors.blue,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -295,15 +335,15 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       body: StreamBuilder<List<Project>>(
         stream: DatabaseService(uid: user.uid).getProjects(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final projects = snapshot.data ?? [];
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Search Bar similar to screenshots
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -364,7 +404,6 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
                           children: [
-                            // Icon container
                             Container(
                               width: 40,
                               height: 40,

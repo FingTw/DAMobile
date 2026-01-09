@@ -58,7 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await ref.putFile(_imageFile!);
       return await ref.getDownloadURL();
     } catch (e) {
-      print("Failed to upload avatar: $e");
+      debugPrint("Failed to upload avatar: $e");
       return null;
     }
   }
@@ -139,7 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), spreadRadius: 5, blurRadius: 20)],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), spreadRadius: 5, blurRadius: 20)],
               ),
               child: CircleAvatar(
                 radius: 65,
@@ -168,7 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildInfoCard() {
      return Card(
       elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.1),
+      shadowColor: Colors.black.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       color: Colors.grey[50],
       child: Padding(
@@ -217,7 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(15),
         gradient: const LinearGradient(colors: [Color(0xFF8E2DE2), Color(0xFF4A00E0)]),
-        boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.3), spreadRadius: 1, blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.purple.withValues(alpha: 0.3), spreadRadius: 1, blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: ElevatedButton(
         onPressed: _isLoading ? null : onPressed,

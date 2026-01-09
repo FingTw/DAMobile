@@ -233,13 +233,13 @@ class DashboardView extends StatelessWidget {
   Color _getPriorityColorForTask(Task task) {
     switch (task.priority) {
       case 1:
-        return const Color(0xFF536DFE).withOpacity(0.8);
+        return const Color(0xFF536DFE).withValues(alpha: 0.8);
       case 2:
-        return const Color(0xFF7C4DFF).withOpacity(0.8);
+        return const Color(0xFF7C4DFF).withValues(alpha: 0.8);
       case 3:
-        return const Color(0xFFF06292).withOpacity(0.8);
+        return const Color(0xFFF06292).withValues(alpha: 0.8);
       default:
-        return Colors.grey.withOpacity(0.8);
+        return Colors.grey.withValues(alpha: 0.8);
     }
   }
 }
@@ -268,7 +268,7 @@ class _ProgressCircle extends StatelessWidget {
               CircularProgressIndicator(
                 value: value / 100,
                 strokeWidth: 8,
-                backgroundColor: color.withOpacity(0.2),
+                backgroundColor: color.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
               Center(
@@ -311,7 +311,7 @@ class _ScheduleTile extends StatelessWidget {
         border: Border(left: BorderSide(color: color, width: 5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),

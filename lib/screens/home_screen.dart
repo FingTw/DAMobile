@@ -93,9 +93,10 @@ class _HomeScreenState extends State<HomeScreen> {
               IconButton(
                 icon: const Icon(Icons.logout, color: Colors.black),
                 onPressed: () async {
+                  final navigator = Navigator.of(context);
                   await authService.signOut();
                   if(mounted) {
-                    Navigator.of(context).pushAndRemoveUntil(
+                    navigator.pushAndRemoveUntil(
                       MaterialPageRoute(builder: (context) => const LoginScreen()),
                       (Route<dynamic> route) => false,
                     );
