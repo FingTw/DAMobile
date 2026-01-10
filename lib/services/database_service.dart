@@ -233,19 +233,23 @@ class DatabaseService {
           priority: value['priority'] ?? 1,
           createdAt: DateTime.fromMillisecondsSinceEpoch(
             value['createdAt'] ?? 0,
+
           ),
+
         );
       }).toList();
     });
   }
 
-  Future<void> addPersonalTask(String title, int priority) async {
+  Future<void> addPersonalTask(String title, int priority, DateTime? dueDate) async { // Thêm tham số dueDate
     final ref = personalTasksRef.push();
     await ref.set({
       'title': title,
       'priority': priority,
       'status': TaskStatus.todo.toString().split('.').last,
       'createdAt': ServerValue.timestamp,
+      'dueDate': dueDate?.millisecondsSinceEpoch, // Lưu ngày hết hạn
+      'isReminded': false, // Cờ đánh dấu đã nhắc
     });
   }
 
@@ -397,7 +401,7 @@ class DatabaseService {
     String projectId,
     String sprintId,
     String storyId,
-    String title,
+    String title, DateTime? dueDate,
   ) async {
     final ref = _tasksRef.push();
     await ref.set({
@@ -410,6 +414,8 @@ class DatabaseService {
       'evidenceNotes': '',
       'status': ProjectTaskStatus.todo.toString().split('.').last,
       'createdAt': ServerValue.timestamp,
+      'dueDate': dueDate?.millisecondsSinceEpoch,
+      'isReminded': false,
     });
   }
 

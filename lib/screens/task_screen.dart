@@ -16,74 +16,81 @@ class TaskScreen extends StatefulWidget {
 }
 
 class _TaskScreenState extends State<TaskScreen> {
+  // Trong _showAddTaskDialog
   void _showAddTaskDialog() {
     final TextEditingController titleController = TextEditingController();
     int selectedPriority = 1;
+    DateTime? selectedDate; // Biến lưu ngày đã chọn
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          title: Text("Add New Personal Task", style: GoogleFonts.poppins()),
-          content: StatefulBuilder(
-            builder: (BuildContext context, StateSetter setState) {
-              return Column(
+        return StatefulBuilder( // Dùng StatefulBuilder để cập nhật UI trong Dialog
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text("Add New Personal Task", style: GoogleFonts.poppins()),
+              content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: titleController,
-                    decoration: const InputDecoration(labelText: 'Task Title'),
-                    autofocus: true,
-                  ),
+                  TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Task Title')),
                   const SizedBox(height: 20),
-                  DropdownButton<int>(
-                    value: selectedPriority,
-                    items: const [
-                      DropdownMenuItem(value: 1, child: Text('High Priority')),
-                      DropdownMenuItem(
-                        value: 2,
-                        child: Text('Medium Priority'),
-                      ),
-                      DropdownMenuItem(value: 3, child: Text('Low Priority')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        selectedPriority = value!;
-                      });
+                  // Nút chọn ngày
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(selectedDate == null
+                        ? "Chọn hạn chót (Tùy chọn)"
+                        : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDate!)}"),
+                    trailing: const Icon(Icons.calendar_today, color: Colors.blue),
+                    onTap: () async {
+                      final date = await showDatePicker(
+                          context: context, initialDate: DateTime.now(),
+                          firstDate: DateTime.now(), lastDate: DateTime(2030)
+                      );
+                      if (date != null) {
+                        final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                        if (time != null) {
+                          setState(() {
+                            selectedDate = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                          });
+                        }
+                      }
                     },
                   ),
+                  DropdownButton<int>(
+                    value: selectedPriority,
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('High Priority')),
+                      DropdownMenuItem(value: 2, child: Text('Medium Priority')),
+                      DropdownMenuItem(value: 3, child: Text('Low Priority')),
+                    ],
+                    onChanged: (value) => setState(() => selectedPriority = value!),
+                  ),
                 ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            ElevatedButton(
-              child: const Text('Add'),
-              onPressed: () {
-                if (titleController.text.isNotEmpty) {
-                  final user = FirebaseAuth.instance.currentUser;
-                  if (user != null) {
-                    DatabaseService(
-                      uid: user.uid,
-                    ).addPersonalTask(titleController.text, selectedPriority);
-                    ToastService.show(
-                      title: "Task Added",
-                      message: "New personal task has been created.",
-                      type: NotificationType.success,
-                    );
-                  }
-                  Navigator.of(context).pop();
-                }
-              },
-            ),
-          ],
+              ),
+              actions: [
+                TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop()),
+                ElevatedButton(
+                  child: const Text('Add'),
+                  onPressed: () {
+                    if (titleController.text.isNotEmpty) {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null) {
+                        // Truyền 3 tham số vào đây
+                        DatabaseService(uid: user.uid).addPersonalTask(
+                            titleController.text,
+                            selectedPriority,
+                            selectedDate // Truyền ngày đã chọn
+                        );
+                        ToastService.show(title: "Task Added", message: "Success", type: NotificationType.success);
+                      }
+                      Navigator.of(context).pop();
+                    }
+                  },
+                ),
+              ],
+            );
+          },
         );
       },
     );

@@ -180,6 +180,7 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                 widget.sprint.id,
                                 selectedStoryId!,
                                 titleController.text,
+                                null,
                               );
                               navigator.pop();
                               ToastService.show(

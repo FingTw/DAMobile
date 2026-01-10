@@ -7,6 +7,7 @@ class Task {
   final TaskStatus status;
   final int priority;
   final DateTime createdAt;
+  final DateTime? dueDate;
 
   Task({
     required this.id,
@@ -14,5 +15,6 @@ class Task {
     this.status = TaskStatus.todo,
     required this.priority,
     required this.createdAt,
+    this.dueDate,
   });
 }

@@ -6,6 +6,8 @@ import 'package:untitled3/screens/project_details_screen.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class NotificationService {
   static const String oneSignalAppId = "6ac28531-232a-43aa-a960-d1114cab6c8a";
@@ -20,6 +22,9 @@ class NotificationService {
 
     OneSignal.User.pushSubscription.addObserver((state) {
       debugPrint("OneSignal Player ID update: ${state.current.id}");
+      if (state.current.id != null) {
+        syncOneSignalId();
+      }
     });
 
     OneSignal.Notifications.addForegroundWillDisplayListener((event) {
@@ -75,6 +80,32 @@ class NotificationService {
       default:
         debugPrint("Unknown notification type or no action defined.");
         break;
+    }
+  }
+  // Hàm này gọi ở HomeScreen hoặc sau khi Login
+  static Future<void> syncOneSignalId() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Lấy OneSignal Player ID
+    var playerId = OneSignal.User.pushSubscription.id;
+
+    if (playerId != null) {
+      // ▼▼▼ SỬA ĐOẠN NÀY: Dùng Realtime Database ▼▼▼
+      try {
+        DatabaseReference userRef = FirebaseDatabase.instance.ref('users/${user.uid}');
+
+        await userRef.update({
+          'oneSignalId': playerId,
+          'lastSync': ServerValue.timestamp, // Dùng timestamp của Realtime DB
+        });
+
+        debugPrint("Đã đồng bộ OneSignal ID thành công: $playerId");
+      } catch (e) {
+        debugPrint("Lỗi đồng bộ OneSignal ID: $e");
+      }
+    } else {
+      debugPrint("Chưa lấy được OneSignal ID (null)");
     }
   }
 }

@@ -10,6 +10,7 @@ class ProjectTask {
   final String evidenceLink; 
   final String evidenceNotes; // New field for notes
   final DateTime createdAt;
+  final DateTime? dueDate;
 
   ProjectTask({
     required this.id,
@@ -20,6 +21,7 @@ class ProjectTask {
     this.evidenceLink = '',
     this.evidenceNotes = '',
     required this.createdAt,
+    this.dueDate,
   });
 
   factory ProjectTask.fromMap(Map<String, dynamic> data, String documentId) {
@@ -35,6 +37,9 @@ class ProjectTask {
         (e) => e.toString().split('.').last == data['status'],
         orElse: () => ProjectTaskStatus.todo,
       ),
+      dueDate: data['dueDate'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(data['dueDate'])
+          : null,
     );
   }
 }

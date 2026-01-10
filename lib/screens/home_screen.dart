@@ -10,6 +10,7 @@ import 'package:untitled3/screens/task_screen.dart'; // RESTORED
 import 'package:untitled3/services/auth_service.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/login_screen.dart';
+import 'package:untitled3/services/notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +21,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Gọi hàm đồng bộ ID ngay khi Home Screen được khởi tạo
+    NotificationService.syncOneSignalId();
+  }
 
   // RESTORED TaskScreen
   static const List<Widget> _widgetOptions = <Widget>[
