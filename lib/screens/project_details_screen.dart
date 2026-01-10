@@ -6,7 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:untitled3/models/project_model.dart';
 import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/models/sprint_model.dart';
-import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/data/repositories/project_repository.dart';
+import 'package:untitled3/data/repositories/sprint_repository.dart';
+import 'package:untitled3/data/repositories/user_story_repository.dart';
 import 'package:untitled3/screens/sprint_details_screen.dart';
 import 'package:untitled3/screens/member_management_screen.dart';
 import 'package:untitled3/screens/user_story_detail_screen.dart';
@@ -46,7 +48,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
 
   Future<void> _toggleProjectLock() async {
     final newLockState = !widget.project.isLocked;
-    await DatabaseService().toggleProjectLock(widget.project.id, newLockState);
+    await ProjectRepository().toggleProjectLock(widget.project.id, newLockState);
     ToastService.show(
       title: newLockState ? "Project Locked" : "Project Unlocked",
       message: newLockState
@@ -79,7 +81,7 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
             child: const Text("Delete"),
             onPressed: () async {
               final navigator = Navigator.of(context);
-              await DatabaseService().deleteProject(widget.project.id);
+              await ProjectRepository().deleteProject(widget.project.id);
               if (mounted) {
                 navigator.pop(); // Close dialog
                 navigator.pop(); // Go back from details screen
@@ -242,7 +244,7 @@ class SummaryTab extends StatelessWidget {
           // This section should ideally be refactored to be cleaner
           // and handle loading/error states more gracefully.
           StreamBuilder<List<Sprint>>(
-            stream: DatabaseService(uid: uid).getSprints(project.id),
+            stream: SprintRepository().getSprints(project.id),
             builder: (context, sprintSnapshot) {
               if (!sprintSnapshot.hasData)
                 return const Center(child: CircularProgressIndicator());
@@ -265,9 +267,7 @@ class SummaryTab extends StatelessWidget {
 
               return StreamBuilder<List<UserStory>>(
                 // Assuming tasks are user stories now
-                stream: DatabaseService(
-                  uid: uid,
-                ).getStoriesForSprint(project.id, activeSprint.id),
+                stream: UserStoryRepository().getStoriesForSprint(project.id, activeSprint.id),
                 builder: (context, storySnapshot) {
                   if (!storySnapshot.hasData)
                     return const Center(child: CircularProgressIndicator());
@@ -562,7 +562,7 @@ class _BacklogTabState extends State<BacklogTab> {
             const SizedBox(height: 16),
 
             StreamBuilder<List<Sprint>>(
-              stream: DatabaseService(uid: uid).getSprints(widget.project.id),
+              stream: SprintRepository().getSprints(widget.project.id),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const SizedBox.shrink();
                 final sprints = snapshot.data!;
@@ -571,9 +571,7 @@ class _BacklogTabState extends State<BacklogTab> {
                 return Column(
                   children: sprints.map((sprint) {
                     return StreamBuilder<List<UserStory>>(
-                      stream: DatabaseService(
-                        uid: uid,
-                      ).getStoriesForSprint(widget.project.id, sprint.id),
+                      stream: UserStoryRepository().getStoriesForSprint(widget.project.id, sprint.id),
                       builder: (context, storySnap) {
                         final stories = storySnap.data ?? [];
                         return Padding(
@@ -594,7 +592,7 @@ class _BacklogTabState extends State<BacklogTab> {
             ),
 
             StreamBuilder<List<UserStory>>(
-              stream: DatabaseService(uid: uid).getBacklog(widget.project.id),
+              stream: UserStoryRepository().getBacklog(widget.project.id),
               builder: (context, snapshot) {
                 final stories = snapshot.data ?? [];
                 return _buildBacklogGroup(
@@ -1404,3 +1402,5 @@ class _SprintsTabState extends State<SprintsTab> {
     );
   }
 }
+
+
