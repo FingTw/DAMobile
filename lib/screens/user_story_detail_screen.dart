@@ -1,9 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:untitled3/models/user_story_model.dart';
+import 'package:untitled3/models/project_task_model.dart';
+import 'package:untitled3/models/user_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
+import 'package:untitled3/widgets/countdown_timer_widget.dart';
 
 class UserStoryDetailScreen extends StatefulWidget {
   final UserStory story;
@@ -24,6 +32,8 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   late TextEditingController _descriptionController;
   late TextEditingController _pointsController;
   late UserStoryStatus _currentStatus;
+  late Future<List<UserModel>> _projectMembers;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -32,6 +42,14 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
     _descriptionController = TextEditingController(text: widget.story.description);
     _pointsController = TextEditingController(text: widget.story.points.toString());
     _currentStatus = widget.story.status;
+    // Get project members for task assignment
+    _projectMembers = _getProjectMembers();
+  }
+
+  Future<List<UserModel>> _getProjectMembers() async {
+    final project = await DatabaseService().getProjectById(widget.projectId);
+    if (project == null) return [];
+    return DatabaseService().getProjectMembers(project.members.keys.toList());
   }
 
   @override
@@ -228,9 +246,510 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                 minLines: 3,
               ),
             ),
+            const SizedBox(height: 30),
+            Text(
+              "Tasks",
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 10),
+            StreamBuilder<List<ProjectTask>>(
+              stream: DatabaseService().getProjectTasksByStory(widget.story.id),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final tasks = snapshot.data!;
+                if (tasks.isEmpty) {
+                  return Center(
+                    child: Column(
+                      children: [
+                        Text(
+                          "Chưa có task nào",
+                          style: GoogleFonts.inter(color: Colors.grey),
+                        ),
+                        const SizedBox(height: 10),
+                        ElevatedButton.icon(
+                          onPressed: _showAddTaskDialog,
+                          icon: const Icon(Icons.add),
+                          label: const Text("Thêm Task"),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return Column(
+                  children: [
+                    ...tasks.map((task) => _buildTaskCard(task)),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed: _showAddTaskDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text("Thêm Task"),
+                    ),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
     );
+  }
+
+  void _showAddTaskDialog() {
+    final titleController = TextEditingController();
+    String? selectedAssigneeId;
+    DateTime? selectedStartDate;
+    DateTime? selectedDueDate;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: FutureBuilder<List<UserModel>>(
+            future: _projectMembers,
+            builder: (context, membersSnapshot) {
+              if (!membersSnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final members = membersSnapshot.data!;
+
+              return StatefulBuilder(
+                builder: (context, setState) {
+                  return SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Thêm Task vào User Story",
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: titleController,
+                          decoration: InputDecoration(
+                            labelText: "Tên task *",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          decoration: InputDecoration(
+                            labelText: "Chọn người thực hiện *",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          value: selectedAssigneeId,
+                          items: members
+                              .map(
+                                (m) => DropdownMenuItem(
+                                  value: m.uid,
+                                  child: Text(m.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) => setState(() => selectedAssigneeId = v),
+                        ),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(selectedStartDate == null
+                              ? "Chọn thời gian bắt đầu *"
+                              : "Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedStartDate!)}"),
+                          trailing: const Icon(Icons.play_circle_outline, color: Colors.green),
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime(2030),
+                            );
+                            if (date != null) {
+                              final time = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.now(),
+                              );
+                              if (time != null) {
+                                setState(() {
+                                  selectedStartDate = DateTime(
+                                    date.year,
+                                    date.month,
+                                    date.day,
+                                    time.hour,
+                                    time.minute,
+                                  );
+                                });
+                              }
+                            }
+                          },
+                        ),
+                        if (selectedStartDate == null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              "Vui lòng chọn thời gian bắt đầu",
+                              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(selectedDueDate == null
+                              ? "Chọn hạn chót *"
+                              : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDueDate!)}"),
+                          trailing: const Icon(Icons.calendar_today, color: Colors.blue),
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: selectedStartDate ?? DateTime.now(),
+                              firstDate: selectedStartDate ?? DateTime.now(),
+                              lastDate: DateTime(2030),
+                            );
+                            if (date != null) {
+                              final time = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.now(),
+                              );
+                              if (time != null) {
+                                setState(() {
+                                  selectedDueDate = DateTime(
+                                    date.year,
+                                    date.month,
+                                    date.day,
+                                    time.hour,
+                                    time.minute,
+                                  );
+                                });
+                              }
+                            }
+                          },
+                        ),
+                        if (selectedDueDate == null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              "Vui lòng chọn hạn chót",
+                              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                            ),
+                          ),
+                        if (selectedStartDate != null && selectedDueDate != null && selectedDueDate!.isBefore(selectedStartDate!))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              "Hạn chót phải sau thời gian bắt đầu",
+                              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                            ),
+                          ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (titleController.text.isNotEmpty &&
+                                  selectedAssigneeId != null &&
+                                  selectedStartDate != null &&
+                                  selectedDueDate != null &&
+                                  selectedDueDate!.isAfter(selectedStartDate!)) {
+                                // Get sprint ID from story
+                                final sprintId = widget.story.sprintId.isNotEmpty
+                                    ? widget.story.sprintId
+                                    : '';
+                                DatabaseService().addProjectTask(
+                                  widget.projectId,
+                                  sprintId,
+                                  widget.story.id,
+                                  titleController.text,
+                                  selectedStartDate!,
+                                  selectedDueDate!,
+                                  selectedAssigneeId!,
+                                );
+                                Navigator.pop(context);
+                                ToastService.show(
+                                  title: "Task Created",
+                                  message: "New task added to user story.",
+                                  type: NotificationType.success,
+                                );
+                              } else {
+                                ToastService.show(
+                                  title: "Missing Information",
+                                  message: "Please fill in all required fields correctly",
+                                  type: NotificationType.warning,
+                                );
+                              }
+                            },
+                            child: const Text("Tạo Task"),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTaskCard(ProjectTask task) {
+    return FutureBuilder<UserModel?>(
+      future: task.assigneeId.isNotEmpty
+          ? DatabaseService().getProjectMembers([task.assigneeId]).then((list) => list.isNotEmpty ? list.first : null)
+          : Future.value(null),
+      builder: (context, assigneeSnapshot) {
+        final assignee = assigneeSnapshot.data;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: task.isOverdue ? Colors.red.shade300 : Colors.grey.shade200,
+              width: task.isOverdue ? 1.5 : 1,
+            ),
+          ),
+          elevation: task.isOverdue ? 2 : 0,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        task.title,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: const Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                    PopupMenuButton<ProjectTaskStatus>(
+                      icon: const Icon(Icons.more_vert, size: 18),
+                      onSelected: (status) {
+                        DatabaseService().updateProjectTaskStatus(task.id, status);
+                      },
+                      itemBuilder: (context) => ProjectTaskStatus.values.map((status) {
+                        return PopupMenuItem(
+                          value: status,
+                          child: Text(status.toString().split('.').last),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Assignee
+                if (assignee != null)
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(Icons.person, size: 14, color: Colors.blue.shade700),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Người thực hiện: ${assignee.name}",
+                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[700]),
+                      ),
+                    ],
+                  ),
+                // Start Date
+                if (task.startDate != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(Icons.play_circle_outline, size: 14, color: Colors.green.shade700),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(task.startDate!)}',
+                        style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ],
+                // Due Date với Countdown
+                if (task.dueDate != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: task.isOverdue ? Colors.red.shade50 : Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: task.isOverdue ? Colors.red.shade700 : Colors.orange.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(task.dueDate!)}',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            CountdownTimerWidget(
+                              dueDate: task.dueDate,
+                              isOverdue: task.isOverdue,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                // Evidence Image
+                if (task.status == ProjectTaskStatus.done && task.evidenceLink.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        task.evidenceLink,
+                        width: double.infinity,
+                        height: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: double.infinity,
+                            height: 120,
+                            color: Colors.grey[300],
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image, size: 30, color: Colors.grey[600]),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Không thể tải ảnh',
+                                  style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            width: double.infinity,
+                            height: 120,
+                            color: Colors.grey[200],
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+                // Upload evidence button
+                if (task.status == ProjectTaskStatus.done && task.evidenceLink.isEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _uploadTaskEvidence(task),
+                      icon: const Icon(Icons.camera_alt, size: 18),
+                      label: const Text('Upload ảnh minh chứng'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _uploadTaskEvidence(ProjectTask task) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (pickedFile == null) return;
+
+    try {
+      final ref = FirebaseStorage.instance.ref('task_evidence/${task.id}.jpg');
+      await ref.putFile(File(pickedFile.path));
+      final downloadUrl = await ref.getDownloadURL();
+      
+      await DatabaseService().updateProjectTaskEvidence(task.id, downloadUrl, '');
+      
+      if (mounted) {
+        ToastService.show(
+          title: "Evidence Uploaded",
+          message: "Image uploaded successfully",
+          type: NotificationType.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ToastService.show(
+          title: "Upload Failed",
+          message: "Failed to upload image: $e",
+          type: NotificationType.error,
+        );
+      }
+    }
   }
 }

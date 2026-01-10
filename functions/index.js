@@ -30,6 +30,7 @@ exports.checkDeadlines = onSchedule("every 15 minutes", async (event) => {
     const db = admin.database();
     const now = Date.now();
     const oneHourLater = now + 60 * 60 * 1000;
+    const oneDayLater = now + 24 * 60 * 60 * 1000;
 
     const updates = {};
     const notifications = [];
@@ -49,11 +50,18 @@ exports.checkDeadlines = onSchedule("every 15 minutes", async (event) => {
             if (userData.personal_tasks) {
                 Object.keys(userData.personal_tasks).forEach(taskId => {
                     const task = userData.personal_tasks[taskId];
+                    // Check for 1 hour before deadline
                     if (shouldRemind(task, now, oneHourLater)) {
-                        const msg = `Task cá nhân "${task.title}" sắp đến hạn!`;
+                        const msg = `⏰ Task cá nhân "${task.title}" sắp đến hạn trong 1 giờ!`;
                         if (userData.oneSignalId) notifications.push({ id: userData.oneSignalId, msg: msg });
-                        if (userData.email && GMAIL_USER) emails.push({ to: userData.email, subject: "⏰ Deadline Task", msg: msg });
+                        if (userData.email && GMAIL_USER) emails.push({ to: userData.email, subject: "⏰ Deadline Task Cá Nhân", msg: msg });
                         updates[`users/${userId}/personal_tasks/${taskId}/isReminded`] = true;
+                    }
+                    // Check for 1 day before deadline
+                    else if (shouldRemindDayBefore(task, now, oneDayLater)) {
+                        const msg = `📅 Task cá nhân "${task.title}" sắp đến hạn trong 1 ngày!`;
+                        if (userData.oneSignalId) notifications.push({ id: userData.oneSignalId, msg: msg });
+                        if (userData.email && GMAIL_USER) emails.push({ to: userData.email, subject: "📅 Nhắc nhở Task Cá Nhân", msg: msg });
                     }
                 });
             }
@@ -66,13 +74,22 @@ exports.checkDeadlines = onSchedule("every 15 minutes", async (event) => {
                 const taskId = taskSnap.key;
                 const task = taskSnap.val();
 
-                if (task.assigneeId && shouldRemind(task, now, oneHourLater)) {
+                if (task.assigneeId && task.assigneeId !== '') {
                     const assigneeData = usersSnapshot.child(task.assigneeId).val();
                     if (assigneeData) {
-                        const msg = `Dự án: Task "${task.title}" sắp hết hạn!`;
-                        if (assigneeData.oneSignalId) notifications.push({ id: assigneeData.oneSignalId, msg: msg });
-                        if (assigneeData.email && GMAIL_USER) emails.push({ to: assigneeData.email, subject: "⏰ Deadline Dự Án", msg: msg });
-                        updates[`tasks/${taskId}/isReminded`] = true;
+                        // Check for 1 hour before deadline
+                        if (shouldRemind(task, now, oneHourLater)) {
+                            const msg = `⏰ Dự án: Task "${task.title}" sắp hết hạn trong 1 giờ!`;
+                            if (assigneeData.oneSignalId) notifications.push({ id: assigneeData.oneSignalId, msg: msg });
+                            if (assigneeData.email && GMAIL_USER) emails.push({ to: assigneeData.email, subject: "⏰ Deadline Dự Án", msg: msg });
+                            updates[`tasks/${taskId}/isReminded`] = true;
+                        }
+                        // Check for 1 day before deadline
+                        else if (shouldRemindDayBefore(task, now, oneDayLater)) {
+                            const msg = `📅 Dự án: Task "${task.title}" sắp hết hạn trong 1 ngày!`;
+                            if (assigneeData.oneSignalId) notifications.push({ id: assigneeData.oneSignalId, msg: msg });
+                            if (assigneeData.email && GMAIL_USER) emails.push({ to: assigneeData.email, subject: "📅 Nhắc nhở Task Dự Án", msg: msg });
+                        }
                     }
                 }
             });
@@ -104,6 +121,15 @@ function shouldRemind(task, now, threshold) {
            !task.isReminded &&
            task.dueDate > now &&
            task.dueDate <= threshold;
+}
+
+function shouldRemindDayBefore(task, now, threshold) {
+    return task.dueDate &&
+           task.status !== 'done' &&
+           !task.isReminded &&
+           task.dueDate > now &&
+           task.dueDate <= threshold &&
+           task.dueDate > now + 60 * 60 * 1000; // More than 1 hour away
 }
 
 async function sendPush(playerId, content) {

@@ -22,13 +22,16 @@ class DatabaseService {
   DatabaseReference get _tasksRef => _database.ref('tasks');
   DatabaseReference get _storiesRef => _database.ref('stories');
 
-  DatabaseReference get userRef => _usersRef.child(uid!);
-  DatabaseReference get personalTasksRef => userRef.child('personal_tasks');
+  DatabaseReference? get userRef => uid != null ? _usersRef.child(uid!) : null;
+  DatabaseReference? get personalTasksRef => userRef?.child('personal_tasks');
 
   // =================== USER METHODS ===================
 
   Future<void> createNewUser(String name, String email) async {
-    await userRef.set({
+    if (uid == null || userRef == null) {
+      throw Exception('User ID is required to create a new user');
+    }
+    await userRef!.set({
       'name': name,
       'email': email,
       'avatarUrl': '',
@@ -44,7 +47,10 @@ class DatabaseService {
     String? zodiacSign,
     int? age,
   }) async {
-    await userRef.update({
+    if (uid == null || userRef == null) {
+      throw Exception('User ID is required to update user data');
+    }
+    await userRef!.update({
       'name': name,
       'workplace': workplace ?? '',
       'zodiacSign': zodiacSign ?? '',
@@ -53,11 +59,17 @@ class DatabaseService {
   }
 
   Future<void> updateUserAvatar(String avatarUrl) async {
-    await userRef.update({'avatarUrl': avatarUrl});
+    if (uid == null || userRef == null) {
+      throw Exception('User ID is required to update avatar');
+    }
+    await userRef!.update({'avatarUrl': avatarUrl});
   }
 
   Stream<UserModel?> get userData {
-    return userRef.onValue.map((event) {
+    if (uid == null || userRef == null) {
+      return Stream.value(null);
+    }
+    return userRef!.onValue.map((event) {
       if (event.snapshot.exists &&
           event.snapshot.value != null &&
           event.snapshot.value is Map) {
@@ -102,6 +114,9 @@ class DatabaseService {
     int maxMembers,
     DateTime? deadline,
   ) async {
+    if (uid == null) {
+      throw Exception('User ID is required to create a project');
+    }
     final newProjectRef = _projectsRef.push();
     String code = _generateJoinCode();
 
@@ -121,6 +136,9 @@ class DatabaseService {
   }
 
   Future<String> joinProjectByCode(String inputCode) async {
+    if (uid == null) {
+      return "User ID is required to join a project";
+    }
     final snapshot = await _projectsRef
         .orderByChild('joinCode')
         .equalTo(inputCode)
@@ -151,6 +169,9 @@ class DatabaseService {
   }
 
   Stream<List<Project>> getProjects() {
+    if (uid == null) {
+      return Stream.value([]);
+    }
     return _projectsRef.onValue.map((event) {
       final List<Project> projects = [];
       if (!event.snapshot.exists || event.snapshot.value == null) {
@@ -217,39 +238,34 @@ class DatabaseService {
   // =================== PERSONAL TASKS ===================
 
   Stream<List<Task>> get personalTasks {
-    return personalTasksRef.onValue.map((event) {
+    if (uid == null || personalTasksRef == null) {
+      return Stream.value([]);
+    }
+    return personalTasksRef!.onValue.map((event) {
       if (!event.snapshot.exists || event.snapshot.value == null) return [];
       final Map<dynamic, dynamic> data =
           Map<dynamic, dynamic>.from(event.snapshot.value as Map);
       return data.entries.map((entry) {
         final value = Map<String, dynamic>.from(entry.value as Map);
-        return Task(
-          id: entry.key,
-          title: value['title'] ?? '',
-          status: TaskStatus.values.firstWhere(
-            (e) => e.toString().split('.').last == value['status'],
-            orElse: () => TaskStatus.todo,
-          ),
-          priority: value['priority'] ?? 1,
-          createdAt: DateTime.fromMillisecondsSinceEpoch(
-            value['createdAt'] ?? 0,
-
-          ),
-
-        );
+        return Task.fromMap(value, entry.key);
       }).toList();
     });
   }
 
-  Future<void> addPersonalTask(String title, int priority, DateTime? dueDate) async { // Thêm tham số dueDate
-    final ref = personalTasksRef.push();
+  Future<void> addPersonalTask(String title, int priority, DateTime dueDate, String? assigneeId) async {
+    if (uid == null || personalTasksRef == null) {
+      throw Exception('User ID is required to add personal task');
+    }
+    final ref = personalTasksRef!.push();
     await ref.set({
       'title': title,
       'priority': priority,
-      'status': TaskStatus.todo.toString().split('.').last,
+      'status': TaskStatus.inProgress.toString().split('.').last, // Mặc định là inProgress
       'createdAt': ServerValue.timestamp,
-      'dueDate': dueDate?.millisecondsSinceEpoch, // Lưu ngày hết hạn
-      'isReminded': false, // Cờ đánh dấu đã nhắc
+      'dueDate': dueDate.millisecondsSinceEpoch, // Bắt buộc có deadline
+      'assigneeId': assigneeId ?? uid,
+      'evidenceLink': '',
+      'isReminded': false,
     });
   }
 
@@ -257,13 +273,26 @@ class DatabaseService {
     String taskId,
     TaskStatus status,
   ) async {
-    await personalTasksRef
+    if (uid == null || personalTasksRef == null) {
+      throw Exception('User ID is required to update personal task');
+    }
+    await personalTasksRef!
         .child(taskId)
         .update({'status': status.toString().split('.').last});
   }
 
+  Future<void> updatePersonalTaskEvidence(String taskId, String evidenceLink) async {
+    if (uid == null || personalTasksRef == null) {
+      throw Exception('User ID is required to update task evidence');
+    }
+    await personalTasksRef!.child(taskId).update({'evidenceLink': evidenceLink});
+  }
+
   Future<void> deletePersonalTask(String taskId) async {
-    await personalTasksRef.child(taskId).remove();
+    if (uid == null || personalTasksRef == null) {
+      throw Exception('User ID is required to delete personal task');
+    }
+    await personalTasksRef!.child(taskId).remove();
   }
 
   // =================== SPRINTS & STORIES ===================
@@ -281,7 +310,18 @@ class DatabaseService {
       'startDate': startDate.millisecondsSinceEpoch,
       'endDate': endDate.millisecondsSinceEpoch,
       'status': SprintStatus.upcoming.toString().split('.').last,
+      'priority': 0, // Priority for sorting
     });
+  }
+
+  Future<void> updateSprintStatus(String sprintId, SprintStatus status) async {
+    await _sprintsRef.child(sprintId).update({
+      'status': status.toString().split('.').last,
+    });
+  }
+
+  Future<void> updateSprintPriority(String sprintId, int priority) async {
+    await _sprintsRef.child(sprintId).update({'priority': priority});
   }
 
   Stream<List<Sprint>> getSprints(String projectId) {
@@ -292,13 +332,42 @@ class DatabaseService {
         .map((event) {
       if (!event.snapshot.exists || event.snapshot.value == null) return [];
       final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-      return data.entries.map((entry) {
+      final sprints = data.entries.map((entry) {
         return Sprint.fromMap(
           Map<String, dynamic>.from(entry.value as Map),
           entry.key,
         );
       }).toList();
+      // Sort by priority (lower number = higher priority), then by start date
+      sprints.sort((a, b) {
+        if (a.priority != b.priority) return a.priority.compareTo(b.priority);
+        return a.startDate.compareTo(b.startDate);
+      });
+      return sprints;
     });
+  }
+
+  // Auto-update sprint status based on dates
+  Future<void> checkAndUpdateSprintStatuses(String projectId) async {
+    final sprints = await getSprints(projectId).first;
+    final now = DateTime.now();
+    
+    for (final sprint in sprints) {
+      SprintStatus? newStatus;
+      if (sprint.startDate.isBefore(now) && sprint.endDate.isAfter(now)) {
+        if (sprint.status != SprintStatus.inProgress) {
+          newStatus = SprintStatus.inProgress;
+        }
+      } else if (sprint.endDate.isBefore(now)) {
+        if (sprint.status != SprintStatus.completed) {
+          newStatus = SprintStatus.completed;
+        }
+      }
+      
+      if (newStatus != null) {
+        await updateSprintStatus(sprint.id, newStatus);
+      }
+    }
   }
 
   Future<void> addUserStory(
@@ -401,7 +470,10 @@ class DatabaseService {
     String projectId,
     String sprintId,
     String storyId,
-    String title, DateTime? dueDate,
+    String title,
+    DateTime startDate,
+    DateTime dueDate,
+    String assigneeId,
   ) async {
     final ref = _tasksRef.push();
     await ref.set({
@@ -409,13 +481,48 @@ class DatabaseService {
       'sprintId': sprintId,
       'storyId': storyId,
       'title': title,
-      'assigneeId': '',
+      'assigneeId': assigneeId,
       'evidenceLink': '',
       'evidenceNotes': '',
       'status': ProjectTaskStatus.todo.toString().split('.').last,
       'createdAt': ServerValue.timestamp,
-      'dueDate': dueDate?.millisecondsSinceEpoch,
+      'startDate': startDate.millisecondsSinceEpoch, // Thời gian bắt đầu
+      'dueDate': dueDate.millisecondsSinceEpoch, // Bắt buộc có deadline
       'isReminded': false,
+    });
+  }
+
+  Future<void> updateProjectTaskAssignee(String taskId, String assigneeId) async {
+    await _tasksRef.child(taskId).update({'assigneeId': assigneeId});
+  }
+
+  Future<void> updateProjectTaskStatus(String taskId, ProjectTaskStatus status) async {
+    await _tasksRef.child(taskId).update({'status': status.toString().split('.').last});
+  }
+
+  Future<void> updateProjectTaskEvidence(String taskId, String evidenceLink, String evidenceNotes) async {
+    await _tasksRef.child(taskId).update({
+      'evidenceLink': evidenceLink,
+      'evidenceNotes': evidenceNotes,
+    });
+  }
+
+  Stream<List<ProjectTask>> getProjectTasksByStory(String storyId) {
+    return _tasksRef
+        .orderByChild('storyId')
+        .equalTo(storyId)
+        .onValue
+        .map((event) {
+      if (!event.snapshot.exists || event.snapshot.value == null) return [];
+      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+      return data.entries
+          .map(
+            (e) => ProjectTask.fromMap(
+              Map<String, dynamic>.from(e.value as Map),
+              e.key,
+            ),
+          )
+          .toList();
     });
   }
 

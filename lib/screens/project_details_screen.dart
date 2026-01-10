@@ -1200,22 +1200,79 @@ class _SprintsTabState extends State<SprintsTab> {
             itemCount: sprints.length,
             itemBuilder: (context, index) {
               final sprint = sprints[index];
+              final now = DateTime.now();
+              final isActive = sprint.startDate.isBefore(now) && sprint.endDate.isAfter(now);
+              final isUpcoming = sprint.startDate.isAfter(now);
+              final isCompleted = sprint.endDate.isBefore(now);
+              
               return Card(
-                elevation: 0,
+                elevation: isActive ? 4 : 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.shade300),
+                  side: BorderSide(
+                    color: isActive ? Colors.blue : Colors.grey.shade300,
+                    width: isActive ? 2 : 1,
+                  ),
                 ),
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  title: Text(
-                    sprint.name,
-                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  leading: isActive
+                      ? Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.play_arrow, color: Colors.blue, size: 20),
+                        )
+                      : null,
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          sprint.name,
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.bold,
+                            color: isActive ? Colors.blue : Colors.black,
+                          ),
+                        ),
+                      ),
+                      if (isActive)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            "ACTIVE",
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   subtitle: Text(
                     "${DateFormat.MMMd().format(sprint.startDate)} - ${DateFormat.MMMd().format(sprint.endDate)}",
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!widget.isLocked && !isActive && !isCompleted)
+                        IconButton(
+                          icon: Icon(Icons.arrow_upward, size: 18),
+                          onPressed: () {
+                            // Increase priority (lower number = higher priority)
+                            DatabaseService().updateSprintPriority(sprint.id, sprint.priority - 1);
+                          },
+                          tooltip: "Increase Priority",
+                        ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
                   onTap: () {
                      if (!widget.isLocked) {
                         Navigator.push(

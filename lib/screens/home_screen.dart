@@ -11,6 +11,7 @@ import 'package:untitled3/services/auth_service.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/login_screen.dart';
 import 'package:untitled3/services/notification_service.dart';
+import 'package:untitled3/services/daily_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,8 +26,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Gọi hàm đồng bộ ID ngay khi Home Screen được khởi tạo
     NotificationService.syncOneSignalId();
+    // Hiển thị thông báo hàng ngày khi đăng nhập
+    _showDailyNotifications();
+  }
+
+  Future<void> _showDailyNotifications() async {
+    // Đợi một chút để UI load xong
+    await Future.delayed(const Duration(seconds: 1));
+    await DailyNotificationService.checkAndShowDailyNotifications();
   }
 
   // RESTORED TaskScreen

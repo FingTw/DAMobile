@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:drag_and_drop_lists/drag_and_drop_lists.dart';
+import 'package:intl/intl.dart';
 import 'package:untitled3/models/project_model.dart';
 import 'package:untitled3/models/sprint_model.dart';
 import 'package:untitled3/models/user_story_model.dart';
+import 'package:untitled3/models/project_task_model.dart';
 import 'package:untitled3/screens/user_story_detail_screen.dart';
 import 'package:untitled3/models/user_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
+import 'package:untitled3/widgets/countdown_timer_widget.dart';
 
 class SprintDetailsScreen extends StatefulWidget {
   final Project project;
@@ -32,50 +35,93 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
     _projectMembers = DatabaseService().getProjectMembers(
       widget.project.members.keys.toList(),
     );
+    // Auto-check and update sprint status
+    _checkSprintStatus();
   }
 
-  void _onItemReorder(
+  Future<void> _checkSprintStatus() async {
+    await DatabaseService().checkAndUpdateSprintStatuses(widget.project.id);
+  }
+
+  void _navigateToTaskDetail(BuildContext context, ProjectTask task) {
+    // Tìm User Story của task này
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StreamBuilder<List<UserStory>>(
+          stream: DatabaseService().getStoriesForSprint(
+            widget.project.id,
+            widget.sprint.id,
+          ),
+          builder: (context, storySnapshot) {
+            if (!storySnapshot.hasData) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('Loading...')),
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            final story = storySnapshot.data!.firstWhere(
+              (s) => s.id == task.storyId,
+              orElse: () => UserStory(
+                id: '',
+                projectId: widget.project.id,
+                title: 'Unknown Story',
+              ),
+            );
+            if (story.id.isEmpty) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('Error')),
+                body: const Center(child: Text('Story not found')),
+              );
+            }
+            return UserStoryDetailScreen(
+              story: story,
+              projectId: widget.project.id,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _onProjectTaskReorder(
     int oldItemIndex,
     int oldListIndex,
     int newItemIndex,
     int newListIndex,
     List<DragAndDropList> contents,
+    List<ProjectTask> allTasks,
   ) {
     if (oldListIndex == newListIndex && oldItemIndex == newItemIndex) return;
 
     final item = contents[oldListIndex].children[oldItemIndex];
-    final storyCard = item.child as _StoryCard;
-    final story = storyCard.story;
+    final taskCard = item.child as _ProjectTaskCard;
+    final task = taskCard.task;
 
-    UserStoryStatus newStatus;
+    ProjectTaskStatus newStatus;
     switch (newListIndex) {
       case 0:
-        newStatus = UserStoryStatus.todo;
+        newStatus = ProjectTaskStatus.todo;
         break;
       case 1:
-        newStatus = UserStoryStatus.inProgress;
+        newStatus = ProjectTaskStatus.inProgress;
         break;
       case 2:
-        newStatus = UserStoryStatus.review;
+        newStatus = ProjectTaskStatus.done;
         break;
       case 3:
-        newStatus = UserStoryStatus.done;
+        newStatus = ProjectTaskStatus.verified;
         break;
       default:
         return;
     }
 
-    if (story.status != newStatus) {
-      DatabaseService().updateUserStory(
-        widget.project.id,
-        story.id,
-        status: newStatus,
-      );
-      // Show notification on task completion
-      if (newStatus == UserStoryStatus.done) {
+    if (task.status != newStatus) {
+      DatabaseService().updateProjectTaskStatus(task.id, newStatus);
+      if (newStatus == ProjectTaskStatus.done) {
         ToastService.show(
-          title: "Story Completed!",
-          message: "'${story.title}' moved to Done.",
+          title: "Task Completed!",
+          message: "'${task.title}' moved to Done.",
           type: NotificationType.success,
         );
       }
@@ -85,6 +131,9 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   void _showAddTaskDialog() {
     final titleController = TextEditingController();
     String? selectedStoryId;
+    String? selectedAssigneeId;
+    DateTime? selectedStartDate;
+    DateTime? selectedDueDate;
 
     showModalBottomSheet(
       context: context,
@@ -117,91 +166,222 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                 );
               }
 
-              return StatefulBuilder(
-                builder: (context, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Tạo hạng mục công việc",
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: "Chọn User Story",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        // ignore: deprecated_member_use
-                        value: selectedStoryId,
-                        items: stories
-                            .map(
-                              (s) => DropdownMenuItem(
-                                value: s.id,
-                                child: Text(s.title),
+              return FutureBuilder<List<UserModel>>(
+                future: _projectMembers,
+                builder: (context, membersSnapshot) {
+                  if (!membersSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final members = membersSnapshot.data!;
+
+                  return StatefulBuilder(
+                    builder: (context, setState) {
+                      return SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Tạo hạng mục công việc",
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
                               ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => selectedStoryId = v),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: titleController,
-                        decoration: InputDecoration(
-                          labelText: "Tên công việc",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ),
-                          onPressed: () {
-                            if (titleController.text.isNotEmpty &&
-                                selectedStoryId != null) {
-                              final navigator = Navigator.of(context);
-                              DatabaseService().addProjectTask(
-                                widget.project.id,
-                                widget.sprint.id,
-                                selectedStoryId!,
-                                titleController.text,
-                                null,
-                              );
-                              navigator.pop();
-                              ToastService.show(
-                                title: "Task Created",
-                                message:
-                                    "New task added to the current sprint.",
-                                type: NotificationType.success,
-                              );
-                            }
-                          },
-                          child: const Text(
-                            "Tạo",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                            const SizedBox(height: 20),
+                            DropdownButtonFormField<String>(
+                              decoration: InputDecoration(
+                                labelText: "Chọn User Story *",
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              value: selectedStoryId,
+                              items: stories
+                                  .map(
+                                    (s) => DropdownMenuItem(
+                                      value: s.id,
+                                      child: Text(s.title),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(() => selectedStoryId = v),
                             ),
-                          ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: titleController,
+                              decoration: InputDecoration(
+                                labelText: "Tên công việc *",
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              decoration: InputDecoration(
+                                labelText: "Chọn người thực hiện *",
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              value: selectedAssigneeId,
+                              items: members
+                                  .map(
+                                    (m) => DropdownMenuItem(
+                                      value: m.uid,
+                                      child: Text(m.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(() => selectedAssigneeId = v),
+                            ),
+                            const SizedBox(height: 16),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(selectedStartDate == null
+                                  ? "Chọn thời gian bắt đầu *"
+                                  : "Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedStartDate!)}"),
+                              trailing: const Icon(Icons.play_circle_outline, color: Colors.green),
+                              onTap: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime.now(),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (date != null) {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: TimeOfDay.now(),
+                                  );
+                                  if (time != null) {
+                                    setState(() {
+                                      selectedStartDate = DateTime(
+                                        date.year,
+                                        date.month,
+                                        date.day,
+                                        time.hour,
+                                        time.minute,
+                                      );
+                                    });
+                                  }
+                                }
+                              },
+                            ),
+                            if (selectedStartDate == null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  "Vui lòng chọn thời gian bắt đầu",
+                                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                                ),
+                              ),
+                            const SizedBox(height: 16),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(selectedDueDate == null
+                                  ? "Chọn hạn chót *"
+                                  : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDueDate!)}"),
+                              trailing: const Icon(Icons.calendar_today, color: Colors.blue),
+                              onTap: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: selectedStartDate ?? DateTime.now(),
+                                  firstDate: selectedStartDate ?? DateTime.now(),
+                                  lastDate: DateTime(2030),
+                                );
+                                if (date != null) {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: TimeOfDay.now(),
+                                  );
+                                  if (time != null) {
+                                    setState(() {
+                                      selectedDueDate = DateTime(
+                                        date.year,
+                                        date.month,
+                                        date.day,
+                                        time.hour,
+                                        time.minute,
+                                      );
+                                    });
+                                  }
+                                }
+                              },
+                            ),
+                            if (selectedDueDate == null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  "Vui lòng chọn hạn chót",
+                                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                                ),
+                              ),
+                            if (selectedStartDate != null && selectedDueDate != null && selectedDueDate!.isBefore(selectedStartDate!))
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  "Hạn chót phải sau thời gian bắt đầu",
+                                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                                ),
+                              ),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blueAccent,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                onPressed: () {
+                                  if (titleController.text.isNotEmpty &&
+                                      selectedStoryId != null &&
+                                      selectedAssigneeId != null &&
+                                      selectedStartDate != null &&
+                                      selectedDueDate != null &&
+                                      selectedDueDate!.isAfter(selectedStartDate!)) {
+                                    final navigator = Navigator.of(context);
+                                    DatabaseService().addProjectTask(
+                                      widget.project.id,
+                                      widget.sprint.id,
+                                      selectedStoryId!,
+                                      titleController.text,
+                                      selectedStartDate!,
+                                      selectedDueDate!,
+                                      selectedAssigneeId!,
+                                    );
+                                    navigator.pop();
+                                    ToastService.show(
+                                      title: "Task Created",
+                                      message: "New task added to the current sprint.",
+                                      type: NotificationType.success,
+                                    );
+                                  } else {
+                                    ToastService.show(
+                                      title: "Missing Information",
+                                      message: "Please fill in all required fields correctly",
+                                      type: NotificationType.warning,
+                                    );
+                                  }
+                                },
+                                child: const Text(
+                                  "Tạo",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                      );
+                    },
                   );
                 },
               );
@@ -217,16 +397,29 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        title: Text(
-          widget.sprint.name,
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF1F2937),
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.sprint.name,
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1F2937),
+                fontSize: 18,
+              ),
+            ),
+            Text(
+              '${DateFormat('dd/MM/yyyy').format(widget.sprint.startDate)} - ${DateFormat('dd/MM/yyyy').format(widget.sprint.endDate)}',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ],
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: true,
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new,
@@ -237,12 +430,15 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list, color: Colors.black),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_horiz, color: Colors.black),
-            onPressed: () {},
+            icon: const Icon(Icons.info_outline, color: Colors.black),
+            tooltip: 'Chế độ xem - Không thể chỉnh sửa',
+            onPressed: () {
+              ToastService.show(
+                title: "Chế độ xem",
+                message: "Bạn đang ở chế độ xem. Vui lòng vào User Story để chỉnh sửa task.",
+                type: NotificationType.info,
+              );
+            },
           ),
         ],
       ),
@@ -254,74 +450,64 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           }
           final members = membersSnapshot.data!;
 
-          return StreamBuilder<List<UserStory>>(
-            stream: DatabaseService().getStoriesForSprint(
-              widget.project.id,
-              widget.sprint.id,
-            ),
-            builder: (context, storySnapshot) {
-              if (storySnapshot.connectionState == ConnectionState.waiting) {
+          return StreamBuilder<List<ProjectTask>>(
+            stream: DatabaseService().getProjectTasks(widget.sprint.id),
+            builder: (context, taskSnapshot) {
+              if (taskSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final stories = storySnapshot.data ?? [];
+              final tasks = taskSnapshot.data ?? [];
 
               List<DragAndDropList> contents = [
                 _buildTaskList(
                   "TO DO",
-                  stories
-                      .where(
-                        (s) =>
-                            s.status == UserStoryStatus.todo ||
-                            s.status == UserStoryStatus.inSprint,
-                      )
+                  tasks
+                      .where((t) => t.status == ProjectTaskStatus.todo)
                       .toList(),
                   members,
                 ),
                 _buildTaskList(
                   "IN PROGRESS",
-                  stories
-                      .where((s) => s.status == UserStoryStatus.inProgress)
-                      .toList(),
-                  members,
-                ),
-                _buildTaskList(
-                  "REVIEW",
-                  stories
-                      .where((s) => s.status == UserStoryStatus.review)
+                  tasks
+                      .where((t) => t.status == ProjectTaskStatus.inProgress)
                       .toList(),
                   members,
                 ),
                 _buildTaskList(
                   "DONE",
-                  stories
-                      .where((s) => s.status == UserStoryStatus.done)
+                  tasks
+                      .where((t) => t.status == ProjectTaskStatus.done)
+                      .toList(),
+                  members,
+                ),
+                _buildTaskList(
+                  "VERIFIED",
+                  tasks
+                      .where((t) => t.status == ProjectTaskStatus.verified)
                       .toList(),
                   members,
                 ),
               ];
 
+              // Disable drag and drop - chỉ xem
               return DragAndDropLists(
                 children: contents,
-                onItemReorder:
-                    (oldItemIndex, oldListIndex, newItemIndex, newListIndex) =>
-                        _onItemReorder(
-                          oldItemIndex,
-                          oldListIndex,
-                          newItemIndex,
-                          newListIndex,
-                          contents,
-                        ),
-                onListReorder: (int oldListIndex, int newListIndex) {},
+                onItemReorder: (int oldItemIndex, int oldListIndex, int newItemIndex, int newListIndex) {
+                  // Do nothing to disable reordering
+                },
+                onListReorder: (int oldListIndex, int newListIndex) {
+                  // Do nothing to disable reordering
+                },
                 listPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 10,
                 ),
                 listDecoration: BoxDecoration(
-                  color: Colors.transparent, // Transparent list background
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 listInnerDecoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFB), // Very light grey for column
+                  color: const Color(0xFFF9FAFB),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.grey.shade200),
                 ),
@@ -332,25 +518,87 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: "add_sprint_task_fab",
-        backgroundColor: const Color(0xFF1F2937),
-        onPressed: _showAddTaskDialog,
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: "add_sprint_task_fab",
+            backgroundColor: const Color(0xFF1F2937),
+            onPressed: _showAddTaskDialog,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: Text(
+              'Thêm Task',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
+                const SizedBox(width: 4),
+                Text(
+                  'Chế độ xem',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   DragAndDropList _buildTaskList(
     String header,
-    List<UserStory> stories,
+    List<ProjectTask> tasks,
     List<UserModel> members,
   ) {
+    Color headerColor;
+    IconData headerIcon;
+    
+    switch (header) {
+      case "TO DO":
+        headerColor = Colors.grey.shade600;
+        headerIcon = Icons.radio_button_unchecked;
+        break;
+      case "IN PROGRESS":
+        headerColor = Colors.blue.shade600;
+        headerIcon = Icons.refresh;
+        break;
+      case "DONE":
+        headerColor = Colors.green.shade600;
+        headerIcon = Icons.check_circle;
+        break;
+      case "VERIFIED":
+        headerColor = Colors.purple.shade600;
+        headerIcon = Icons.verified;
+        break;
+      default:
+        headerColor = Colors.grey.shade600;
+        headerIcon = Icons.list;
+    }
+
     return DragAndDropList(
       header: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-        decoration: const BoxDecoration(
-          borderRadius: BorderRadius.only(
+        decoration: BoxDecoration(
+          color: headerColor.withValues(alpha: 0.1),
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(12),
             topRight: Radius.circular(12),
           ),
@@ -358,25 +606,31 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              header,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
+            Row(
+              children: [
+                Icon(headerIcon, size: 18, color: headerColor),
+                const SizedBox(width: 8),
+                Text(
+                  header,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: headerColor,
+                  ),
+                ),
+              ],
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.grey[200],
+                color: headerColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                stories.length.toString(),
+                tasks.length.toString(),
                 style: GoogleFonts.inter(
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey[700],
+                  color: Colors.white,
                   fontSize: 12,
                 ),
               ),
@@ -384,24 +638,19 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           ],
         ),
       ),
-      children: stories.map((story) {
-        // Find assignee logic if UserStory has assignee, current model does NOT support assignee on UserStory directly.
-        // We will skip assignee for now or use "Unassigned" placeholder.
-        // User said: "detail screen of userstory is task of sprint".
-
+      children: tasks.map((task) {
+        final assignee = members.firstWhere(
+          (m) => m.uid == task.assigneeId,
+          orElse: () => UserModel(uid: '', name: 'Unassigned', email: ''),
+        );
         return DragAndDropItem(
-          child: _StoryCard(
-            story: story,
+          canDrag: false, // Disable drag - chỉ xem
+          child: _ProjectTaskCard(
+            task: task,
+            assignee: assignee,
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => UserStoryDetailScreen(
-                    story: story,
-                    projectId: widget.project.id,
-                  ),
-                ),
-              );
+              // Navigate to User Story Detail để chỉnh sửa task
+              _navigateToTaskDetail(context, task);
             },
           ),
         );
@@ -410,10 +659,11 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   }
 }
 
-class _StoryCard extends StatelessWidget {
-  final UserStory story;
+class _ProjectTaskCard extends StatelessWidget {
+  final ProjectTask task;
+  final UserModel assignee;
   final VoidCallback onTap;
-  const _StoryCard({required this.story, required this.onTap});
+  const _ProjectTaskCard({required this.task, required this.assignee, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -424,12 +674,17 @@ class _StoryCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: task.isOverdue ? Colors.red.shade300 : Colors.grey.shade200,
+            width: task.isOverdue ? 1.5 : 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 4,
+              color: task.isOverdue 
+                  ? Colors.red.withValues(alpha: 0.1)
+                  : Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
@@ -439,44 +694,170 @@ class _StoryCard extends StatelessWidget {
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                Expanded(
                   child: Text(
-                    "${story.points} PTS",
+                    task.title,
                     style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: const Color(0xFF111827),
                     ),
                   ),
                 ),
-                const Icon(Icons.more_horiz, size: 16, color: Colors.grey),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                  onSelected: (value) {
+                    if (value == 'view') {
+                      // Navigate to task detail
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'view', child: Text('Xem chi tiết')),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              story.title,
-              style: GoogleFonts.inter(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: const Color(0xFF111827),
-              ),
+            // Assignee
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Icon(Icons.person, size: 14, color: Colors.blue.shade700),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    assignee.name,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ),
+              ],
             ),
-            if (story.description.isNotEmpty) ...[
+            // Start Date
+            if (task.startDate != null) ...[
               const SizedBox(height: 8),
-              Text(
-                story.description,
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(Icons.play_circle_outline, size: 14, color: Colors.green.shade700),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(task.startDate!)}',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // Due Date với Countdown
+            if (task.dueDate != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: task.isOverdue ? Colors.red.shade50 : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      Icons.access_time,
+                      size: 14,
+                      color: task.isOverdue ? Colors.red.shade700 : Colors.orange.shade700,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(task.dueDate!)}',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        CountdownTimerWidget(
+                          dueDate: task.dueDate,
+                          isOverdue: task.isOverdue,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // Evidence Image
+            if (task.status == ProjectTaskStatus.done && task.evidenceLink.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    task.evidenceLink,
+                    width: double.infinity,
+                    height: 120,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: double.infinity,
+                        height: 120,
+                        color: Colors.grey[300],
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.broken_image, size: 30, color: Colors.grey[600]),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Không thể tải ảnh',
+                              style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        width: double.infinity,
+                        height: 120,
+                        color: Colors.grey[200],
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ],
           ],

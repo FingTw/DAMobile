@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:intl/intl.dart';
-import 'package:untitled3/models/task_model.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart' as storage;
+import 'package:untitled3/models/task_model.dart' as tm;
 import 'package:untitled3/services/database_service.dart';
 import 'package:collection/collection.dart';
 import 'package:untitled3/services/toast_service.dart';
@@ -16,29 +19,61 @@ class TaskScreen extends StatefulWidget {
 }
 
 class _TaskScreenState extends State<TaskScreen> {
-  // Trong _showAddTaskDialog
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _uploadEvidence(BuildContext context, tm.Task task) async {
+    final user = auth.FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (pickedFile == null) return;
+
+    try {
+      final ref = storage.FirebaseStorage.instance.ref('task_evidence/${user.uid}/${task.id}.jpg');
+      await ref.putFile(File(pickedFile.path));
+      final downloadUrl = await ref.getDownloadURL();
+      
+      await DatabaseService(uid: user.uid).updatePersonalTaskEvidence(task.id, downloadUrl);
+      
+      if (context.mounted) {
+        ToastService.show(
+          title: "Evidence Uploaded",
+          message: "Image uploaded successfully",
+          type: NotificationType.success,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ToastService.show(
+          title: "Upload Failed",
+          message: "Failed to upload image: $e",
+          type: NotificationType.error,
+        );
+      }
+    }
+  }
+
   void _showAddTaskDialog() {
     final TextEditingController titleController = TextEditingController();
     int selectedPriority = 1;
-    DateTime? selectedDate; // Biến lưu ngày đã chọn
+    DateTime? selectedDate;
 
     showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder( // Dùng StatefulBuilder để cập nhật UI trong Dialog
+        return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
               title: Text("Add New Personal Task", style: GoogleFonts.poppins()),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Task Title')),
+                  TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Task Title *')),
                   const SizedBox(height: 20),
-                  // Nút chọn ngày
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(selectedDate == null
-                        ? "Chọn hạn chót (Tùy chọn)"
+                        ? "Chọn hạn chót *"
                         : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDate!)}"),
                     trailing: const Icon(Icons.calendar_today, color: Colors.blue),
                     onTap: () async {
@@ -47,6 +82,7 @@ class _TaskScreenState extends State<TaskScreen> {
                           firstDate: DateTime.now(), lastDate: DateTime(2030)
                       );
                       if (date != null) {
+                        if (!context.mounted) return;
                         final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
                         if (time != null) {
                           setState(() {
@@ -56,6 +92,15 @@ class _TaskScreenState extends State<TaskScreen> {
                       }
                     },
                   ),
+                  if (selectedDate == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        "Vui lòng chọn hạn chót",
+                        style: GoogleFonts.poppins(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
                   DropdownButton<int>(
                     value: selectedPriority,
                     isExpanded: true,
@@ -73,18 +118,23 @@ class _TaskScreenState extends State<TaskScreen> {
                 ElevatedButton(
                   child: const Text('Add'),
                   onPressed: () {
-                    if (titleController.text.isNotEmpty) {
-                      final user = FirebaseAuth.instance.currentUser;
+                    if (titleController.text.isNotEmpty && selectedDate != null) {
+                      final user = auth.FirebaseAuth.instance.currentUser;
                       if (user != null) {
-                        // Truyền 3 tham số vào đây
                         DatabaseService(uid: user.uid).addPersonalTask(
                             titleController.text,
                             selectedPriority,
-                            selectedDate // Truyền ngày đã chọn
+                            selectedDate!,
+                            user.uid
                         );
                         ToastService.show(title: "Task Added", message: "Success", type: NotificationType.success);
+                        Navigator.of(context).pop();
                       }
-                      Navigator.of(context).pop();
+                    } else {
+                      ToastService.show(
+                          title: "Missing Information",
+                          message: "Please fill in all required fields",
+                          type: NotificationType.warning);
                     }
                   },
                 ),
@@ -98,12 +148,12 @@ class _TaskScreenState extends State<TaskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = auth.FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Please log in."));
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: StreamBuilder<List<Task>>(
+      body: StreamBuilder<List<tm.Task>>(
         stream: DatabaseService(uid: user.uid).personalTasks,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -124,17 +174,20 @@ class _TaskScreenState extends State<TaskScreen> {
             );
           }
 
-          final tasks = snapshot.data!;
+          final List<tm.Task> tasks = snapshot.data!;
 
-          final draftTasks = tasks
-              .where((t) => t.status == TaskStatus.inProgress)
+          final todoTasks = tasks
+              .where((t) => t.status == tm.TaskStatus.todo)
+              .toList();
+          final inProgressTasks = tasks
+              .where((t) => t.status == tm.TaskStatus.inProgress)
               .toList();
           final doneTasks = tasks
-              .where((t) => t.status == TaskStatus.done)
+              .where((t) => t.status == tm.TaskStatus.done)
               .toList();
 
           return DefaultTabController(
-            length: 2,
+            length: 3,
             child: Column(
               children: [
                 Padding(
@@ -168,6 +221,14 @@ class _TaskScreenState extends State<TaskScreen> {
                       tabs: [
                         Tab(
                           child: Text(
+                            "To Do",
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Tab(
+                          child: Text(
                             "In Progress",
                             style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w600,
@@ -189,8 +250,9 @@ class _TaskScreenState extends State<TaskScreen> {
                 Expanded(
                   child: TabBarView(
                     children: [
-                      _buildTaskList(draftTasks, "No tasks in progress."),
-                      _buildTaskList(doneTasks, "No completed tasks yet."),
+                      _buildTaskList(todoTasks, "No tasks to do.", _uploadEvidence),
+                      _buildTaskList(inProgressTasks, "No tasks in progress.", _uploadEvidence),
+                      _buildTaskList(doneTasks, "No completed tasks yet.", _uploadEvidence),
                     ],
                   ),
                 ),
@@ -223,7 +285,7 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
-  Widget _buildTaskList(List<Task> tasks, String emptyMessage) {
+  Widget _buildTaskList(List<tm.Task> tasks, String emptyMessage, Future<void> Function(BuildContext, tm.Task) uploadEvidence) {
     if (tasks.isEmpty) {
       return Center(
         child: Text(
@@ -233,9 +295,27 @@ class _TaskScreenState extends State<TaskScreen> {
       );
     }
 
+    final sortedTasks = List<tm.Task>.from(tasks);
+    sortedTasks.sort((a, b) {
+      final now = DateTime.now();
+      final aOverdue = a.dueDate != null && a.dueDate!.isBefore(now) && a.status != tm.TaskStatus.done;
+      final bOverdue = b.dueDate != null && b.dueDate!.isBefore(now) && b.status != tm.TaskStatus.done;
+      
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      
+      if (a.dueDate != null && b.dueDate != null) {
+        return a.dueDate!.compareTo(b.dueDate!);
+      }
+      if (a.dueDate != null) return -1;
+      if (b.dueDate != null) return 1;
+      
+      return a.createdAt.compareTo(b.createdAt);
+    });
+
     final groupedTasks = groupBy(
-      tasks,
-      (Task task) => _getGroupTitle(task.createdAt),
+      sortedTasks,
+      (tm.Task task) => _getGroupTitle(task.createdAt),
     );
 
     return ListView.builder(
@@ -243,13 +323,13 @@ class _TaskScreenState extends State<TaskScreen> {
       itemCount: groupedTasks.keys.length,
       itemBuilder: (context, index) {
         final String title = groupedTasks.keys.elementAt(index);
-        final List<Task> tasksInGroup = groupedTasks[title]!;
-        return _buildTaskSection(title, tasksInGroup);
+        final List<tm.Task> tasksInGroup = groupedTasks[title]!;
+        return _buildTaskSection(title, tasksInGroup, uploadEvidence);
       },
     );
   }
 
-  Widget _buildTaskSection(String title, List<Task> tasks) {
+  Widget _buildTaskSection(String title, List<tm.Task> tasks, Future<void> Function(BuildContext, tm.Task) uploadEvidence) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -264,7 +344,7 @@ class _TaskScreenState extends State<TaskScreen> {
             ),
           ),
         ),
-        ...tasks.map((task) => _TaskListItem(task: task)),
+        ...tasks.map((task) => _TaskListItem(task: task, uploadEvidence: uploadEvidence)),
         const SizedBox(height: 30),
       ],
     );
@@ -272,8 +352,9 @@ class _TaskScreenState extends State<TaskScreen> {
 }
 
 class _TaskListItem extends StatelessWidget {
-  final Task task;
-  const _TaskListItem({required this.task});
+  final tm.Task task;
+  final Future<void> Function(BuildContext, tm.Task) uploadEvidence;
+  const _TaskListItem({required this.task, required this.uploadEvidence});
 
   Color _getPriorityColor() {
     switch (task.priority) {
@@ -290,8 +371,8 @@ class _TaskListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final isDone = task.status == TaskStatus.done;
+    final user = auth.FirebaseAuth.instance.currentUser;
+    final isDone = task.status == tm.TaskStatus.done;
 
     return Card(
       elevation: 4,
@@ -303,13 +384,20 @@ class _TaskListItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         onTap: () {
           if (user != null) {
-            final newStatus = isDone ? TaskStatus.inProgress : TaskStatus.done;
+            tm.TaskStatus newStatus;
+            if (isDone) {
+              newStatus = tm.TaskStatus.inProgress;
+            } else if (task.status == tm.TaskStatus.todo) {
+              newStatus = tm.TaskStatus.inProgress;
+            } else {
+              newStatus = tm.TaskStatus.done;
+            }
+            
             DatabaseService(
               uid: user.uid,
             ).updatePersonalTaskStatus(task.id, newStatus);
 
-            // Show notification on task completion
-            if (newStatus == TaskStatus.done) {
+            if (newStatus == tm.TaskStatus.done) {
               ToastService.show(
                 title: "Task Completed!",
                 message: "'${task.title}' marked as done.",
@@ -329,18 +417,118 @@ class _TaskListItem extends StatelessWidget {
               ),
               const SizedBox(width: 18),
               Expanded(
-                child: Text(
-                  task.title,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    decoration: isDone
-                        ? TextDecoration.lineThrough
-                        : TextDecoration.none,
-                    color: isDone ? Colors.grey.shade500 : Colors.black87,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        decoration: isDone
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        color: isDone ? Colors.grey.shade500 : Colors.black87,
+                      ),
+                    ),
+                    if (task.dueDate != null) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                              ? Colors.red.shade50
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                                ? Colors.red
+                                : Colors.grey.shade300,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.access_time,
+                              size: 12,
+                              color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                                  ? Colors.red
+                                  : Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              DateFormat('dd/MM/yyyy HH:mm').format(task.dueDate!),
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                                    ? Colors.red
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                            if (task.dueDate!.isBefore(DateTime.now()) && !isDone) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                "QUÁ HẠN",
+                                style: GoogleFonts.poppins(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (isDone && task.evidenceLink != null && task.evidenceLink!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          task.evidenceLink!,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              width: 60,
+                              height: 60,
+                              color: Colors.grey[300],
+                              child: Icon(Icons.broken_image, size: 30, color: Colors.grey[600]),
+                            );
+                          },
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              width: 60,
+                              height: 60,
+                              color: Colors.grey[200],
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+              if (isDone && (task.evidenceLink == null || task.evidenceLink!.isEmpty))
+                IconButton(
+                  icon: Icon(Icons.camera_alt, color: Colors.blue.shade400),
+                  onPressed: () => uploadEvidence(context, task),
+                  tooltip: "Upload Evidence",
+                ),
               IconButton(
                 icon: Icon(Icons.delete_outline, color: Colors.grey.shade400),
                 onPressed: () {

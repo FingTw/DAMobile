@@ -10,6 +10,7 @@ class ProjectTask {
   final String evidenceLink; 
   final String evidenceNotes; // New field for notes
   final DateTime createdAt;
+  final DateTime? startDate; // Thời gian bắt đầu task
   final DateTime? dueDate;
 
   ProjectTask({
@@ -21,6 +22,7 @@ class ProjectTask {
     this.evidenceLink = '',
     this.evidenceNotes = '',
     required this.createdAt,
+    this.startDate,
     this.dueDate,
   });
 
@@ -33,6 +35,9 @@ class ProjectTask {
       evidenceLink: data['evidenceLink'] ?? '',
       evidenceNotes: data['evidenceNotes'] ?? '',
       createdAt: DateTime.fromMillisecondsSinceEpoch(data['createdAt'] ?? 0),
+      startDate: data['startDate'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(data['startDate'])
+          : null,
       status: ProjectTaskStatus.values.firstWhere(
         (e) => e.toString().split('.').last == data['status'],
         orElse: () => ProjectTaskStatus.todo,
@@ -41,5 +46,17 @@ class ProjectTask {
           ? DateTime.fromMillisecondsSinceEpoch(data['dueDate'])
           : null,
     );
+  }
+
+  Duration? get timeRemaining {
+    if (dueDate == null) return null;
+    final now = DateTime.now();
+    if (dueDate!.isBefore(now)) return null;
+    return dueDate!.difference(now);
+  }
+
+  bool get isOverdue {
+    if (dueDate == null) return false;
+    return dueDate!.isBefore(DateTime.now()) && status != ProjectTaskStatus.done;
   }
 }
