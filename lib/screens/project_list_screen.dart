@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:untitled3/models/project_model.dart';
-import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/data/repositories/project_repository.dart';
 import 'package:untitled3/screens/project_details_screen.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
@@ -51,7 +51,9 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         controller: nameController,
                         decoration: InputDecoration(
                           labelText: 'Tên không gian *',
-                          labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
+                          labelStyle: GoogleFonts.inter(
+                            color: Colors.grey[600],
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -74,7 +76,9 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         controller: descController,
                         decoration: InputDecoration(
                           labelText: 'Mô tả (Tùy chọn)',
-                          labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
+                          labelStyle: GoogleFonts.inter(
+                            color: Colors.grey[600],
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -89,7 +93,10 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                       ),
                       const SizedBox(height: 16),
                       TextButton.icon(
-                        icon: const Icon(Icons.calendar_today, color: Colors.blue),
+                        icon: const Icon(
+                          Icons.calendar_today,
+                          color: Colors.blue,
+                        ),
                         label: Text(
                           selectedDeadline == null
                               ? 'Chọn thời hạn (Tùy chọn)'
@@ -127,7 +134,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                           const SizedBox(width: 8),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue, // Solid color for clarity
+                              backgroundColor:
+                                  Colors.blue, // Solid color for clarity
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -136,35 +144,39 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                               if (nameController.text.isNotEmpty) {
                                 final user = FirebaseAuth.instance.currentUser;
                                 if (user != null) {
-                                  DatabaseService(uid: user.uid)
+                                  ProjectRepository(uid: user.uid)
                                       .createProject(
-                                    nameController.text,
-                                    descController.text,
-                                    10, // Default max members
-                                    selectedDeadline,
-                                  )
+                                        nameController.text,
+                                        descController.text,
+                                        10, // Default max members
+                                        selectedDeadline,
+                                      )
                                       .then((_) {
-                                    if (mounted && context.mounted) {
-                                      Navigator.of(context).pop(); // Close dialog on success
-                                    }
-                                    ToastService.show(
-                                      title: "Thành công",
-                                      message:
-                                          "Đã tạo không gian '${nameController.text}'",
-                                      type: NotificationType.success,
-                                    );
-                                  }).catchError((error) {
-                                    ToastService.show(
-                                      title: "Thất bại",
-                                      message: "Lỗi: $error",
-                                      type: NotificationType.error,
-                                    );
-                                  });
+                                        if (mounted && context.mounted) {
+                                          Navigator.of(
+                                            context,
+                                          ).pop(); // Close dialog on success
+                                        }
+                                        ToastService.show(
+                                          title: "Thành công",
+                                          message:
+                                              "Đã tạo không gian '${nameController.text}'",
+                                          type: NotificationType.success,
+                                        );
+                                      })
+                                      .catchError((error) {
+                                        ToastService.show(
+                                          title: "Thất bại",
+                                          message: "Lỗi: $error",
+                                          type: NotificationType.error,
+                                        );
+                                      });
                                 }
                               } else {
                                 ToastService.show(
                                   title: "Thiếu thông tin",
-                                  message: "Vui lòng nhập tên không gian làm việc",
+                                  message:
+                                      "Vui lòng nhập tên không gian làm việc",
                                   type: NotificationType.warning,
                                 );
                               }
@@ -254,7 +266,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                       onPressed: () async {
                         if (codeController.text.isNotEmpty) {
                           final navigator = Navigator.of(context);
-                          String res = await DatabaseService(
+                          String res = await ProjectRepository(
                             uid: FirebaseAuth.instance.currentUser?.uid,
                           ).joinProjectByCode(codeController.text);
                           if (mounted && context.mounted) {
@@ -269,7 +281,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                           } else {
                             ToastService.show(
                               title: "Thất bại",
-                              message: res, // Show the error message from the service
+                              message:
+                                  res, // Show the error message from the service
                               type: NotificationType.error,
                             );
                           }
@@ -333,7 +346,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         ],
       ),
       body: StreamBuilder<List<Project>>(
-        stream: DatabaseService(uid: user.uid).getProjects(),
+        stream: ProjectRepository(uid: user.uid).getProjects(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
