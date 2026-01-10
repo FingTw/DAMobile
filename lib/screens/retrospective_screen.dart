@@ -473,16 +473,56 @@ class _RetrospectiveScreenState extends State<RetrospectiveScreen>
                                   ),
                                 ),
                               ),
+                              if (item.authorId == currentUser.uid) ...[
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => DatabaseService()
+                                      .deleteRetroItem(item.id),
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Text(
-                            item.description,
-                            style: GoogleFonts.inter(
-                              fontSize: 15,
-                              color: const Color(0xFF1F2937),
-                              height: 1.5,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.description,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15,
+                                    color: const Color(0xFF1F2937),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                              if (item.authorId == currentUser.uid)
+                                Container(
+                                  margin: const EdgeInsets.only(left: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    'Me',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue.shade700,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),

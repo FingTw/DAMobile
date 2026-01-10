@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:untitled3/models/project_model.dart';
 import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/models/sprint_model.dart';
-import 'package:untitled3/data/repositories/project_repository.dart';
 import 'package:untitled3/data/repositories/sprint_repository.dart';
 import 'package:untitled3/data/repositories/user_story_repository.dart';
 import 'package:untitled3/screens/sprint_details_screen.dart';
@@ -15,6 +14,8 @@ import 'package:untitled3/screens/user_story_detail_screen.dart';
 import 'package:untitled3/screens/definition_of_done_screen.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
+import 'package:untitled3/models/project_task_model.dart';
+import 'package:untitled3/services/database_service.dart';
 
 class ProjectDetailsScreen extends StatefulWidget {
   final Project project;
@@ -31,67 +32,73 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
   late bool _isPastDeadline;
 
   final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
-  bool get amIPO => widget.project.ownerId == currentUserId;
+  String get currentRole => widget.project.members[currentUserId] ?? 'Dev';
+  bool get isPO =>
+      currentRole == 'PO' || widget.project.ownerId == currentUserId;
+  bool get isSM => currentRole == 'SM';
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _updateLockState();
+    _tabController = TabController(length: 4, vsync: this);
+    _isLocked = widget.project.isLocked;
+    _isPastDeadline =
+        widget.project.deadline != null &&
+        widget.project.deadline!.isBefore(DateTime.now());
   }
 
   void _updateLockState() {
-    _isPastDeadline =
-        widget.project.deadline?.isBefore(DateTime.now()) ?? false;
-    _isLocked = widget.project.isLocked || _isPastDeadline;
+    DatabaseService().getProjectById(widget.project.id).then((updatedProject) {
+      if (mounted && updatedProject != null) {
+        setState(() {
+          _isLocked = updatedProject.isLocked;
+        });
+      }
+    });
   }
 
-  Future<void> _toggleProjectLock() async {
-    final newLockState = !widget.project.isLocked;
-    await ProjectRepository().toggleProjectLock(widget.project.id, newLockState);
+  void _toggleProjectLock() async {
+    await DatabaseService().toggleProjectLock(widget.project.id, !_isLocked);
+    setState(() {
+      _isLocked = !_isLocked;
+    });
     ToastService.show(
-      title: newLockState ? "Project Locked" : "Project Unlocked",
-      message: newLockState
-          ? "Members can no longer make changes."
-          : "Members can now resume work.",
-      type: newLockState ? NotificationType.warning : NotificationType.success,
+      title: _isLocked ? "Project Locked" : "Project Unlocked",
+      message: _isLocked
+          ? "Only viewing is allowed."
+          : "Work can continue normally.",
+      type: NotificationType.info,
     );
-    if (mounted) {
-      setState(() {
-        _isLocked = newLockState || _isPastDeadline;
-      });
-    }
   }
 
   void _showDeleteConfirmationDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Delete Project"),
-        content: Text(
-          "This will permanently delete '${widget.project.name}' and all its data. This action cannot be undone.",
+        title: const Text("Xóa dự án"),
+        content: const Text(
+          "Bạn có chắc chắn muốn xóa dự án này? Hành động này không thể hoàn tác.",
         ),
         actions: [
           TextButton(
-            child: const Text("Cancel"),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Hủy"),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text("Delete"),
             onPressed: () async {
-              final navigator = Navigator.of(context);
-              await ProjectRepository().deleteProject(widget.project.id);
+              await DatabaseService().deleteProject(widget.project.id);
               if (mounted) {
-                navigator.pop(); // Close dialog
-                navigator.pop(); // Go back from details screen
+                Navigator.pop(context); // Đóng dialog
+                Navigator.pop(context); // Quay lại danh sách dự án
+                ToastService.show(
+                  title: "Đã xóa dự án",
+                  message: "Dự án đã được loại bỏ vĩnh viễn.",
+                  type: NotificationType.warning,
+                );
               }
-              ToastService.show(
-                title: "Project Deleted",
-                message: "'${widget.project.name}' was successfully deleted.",
-                type: NotificationType.error,
-              );
             },
+            child: const Text("Xóa", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -129,25 +136,28 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.verified, color: Color(0xFF2563EB)),
-            tooltip: 'Definition of Done',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => DefinitionOfDoneScreen(project: widget.project),
-              ),
-            ),
-          ),
-          IconButton(
             icon: const Icon(Icons.people_outline),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => MemberManagementScreen(project: widget.project),
+                builder: (context) =>
+                    MemberManagementScreen(project: widget.project),
               ),
             ),
           ),
-          if (amIPO)
+          if (isPO) // Only PO/Owner can manage DoD
+            IconButton(
+              icon: const Icon(Icons.verified, color: Color(0xFF2563EB)),
+              tooltip: 'Definition of Done',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      DefinitionOfDoneScreen(project: widget.project),
+                ),
+              ),
+            ),
+          if (isPO) // Only PO/Owner has project settings
             PopupMenuButton<String>(
               onSelected: (value) {
                 if (value == 'lock') _toggleProjectLock();
@@ -156,17 +166,22 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
               itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'lock',
-                  child: Text(
-                    widget.project.isLocked
-                        ? "Re-open Project"
-                        : "Mark as Completed",
+                  child: Row(
+                    children: [
+                      Icon(_isLocked ? Icons.lock_open : Icons.lock, size: 20),
+                      const SizedBox(width: 8),
+                      Text(_isLocked ? 'Mở khóa dự án' : 'Khóa dự án'),
+                    ],
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'delete',
-                  child: Text(
-                    "Delete Project",
-                    style: TextStyle(color: Colors.red),
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                      const SizedBox(width: 8),
+                      Text('Xóa dự án', style: TextStyle(color: Colors.red)),
+                    ],
                   ),
                 ),
               ],
@@ -174,49 +189,42 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: const Color(0xFF2563EB), // Blue 600
-          unselectedLabelColor: Colors.grey[600],
-          indicatorColor: const Color(0xFF2563EB),
+          labelColor: Colors.black,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: Colors.black,
           tabs: const [
-            Tab(text: 'Tóm tắt'),
-            Tab(text: 'Bảng thông tin'), // Sprints
-            Tab(text: 'Công việc'), // Backlog
+            Tab(text: "Tóm tắt"),
+            Tab(text: "Backlog"),
+            Tab(text: "Sprints"),
+            Tab(text: "Meetings"),
           ],
         ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          if (_isLocked)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12.0),
-              color: _isPastDeadline
-                  ? Colors.red.shade700
-                  : Colors.amber.shade700,
-              child: Text(
-                _isPastDeadline
-                    ? "Project is past its deadline and is now archived."
-                    : "This project is marked as completed and is now read-only.",
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                SummaryTab(project: widget.project, isLocked: _isLocked),
-                SprintsTab(project: widget.project, isLocked: _isLocked),
-                BacklogTab(project: widget.project, isLocked: _isLocked),
-              ],
-            ),
+          SummaryTab(
+            project: widget.project,
+            isLocked: _isLocked,
+            isPO: isPO,
+            isSM: isSM,
+            isPastDeadline: _isPastDeadline,
           ),
+          BacklogTab(project: widget.project, isLocked: _isLocked, isPO: isPO),
+          SprintsTab(
+            project: widget.project,
+            isLocked: _isLocked,
+            isPO: isPO,
+            isSM: isSM,
+          ),
+          _buildMeetingsTab(),
         ],
       ),
     );
+  }
+
+  Widget _buildMeetingsTab() {
+    return const Center(child: Text("Meetings feature is coming soon!"));
   }
 }
 
@@ -226,63 +234,134 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
 class SummaryTab extends StatelessWidget {
   final Project project;
   final bool isLocked;
-  const SummaryTab({super.key, required this.project, required this.isLocked});
+  final bool isPO;
+  final bool isSM;
+  final bool isPastDeadline;
+  const SummaryTab({
+    super.key,
+    required this.project,
+    required this.isLocked,
+    required this.isPO,
+    required this.isSM,
+    required this.isPastDeadline,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // This would need a stateful parent to be interactive
-          _buildDropdownFilter(),
-          const SizedBox(height: 16),
-
-          // This section should ideally be refactored to be cleaner
-          // and handle loading/error states more gracefully.
           StreamBuilder<List<Sprint>>(
             stream: SprintRepository().getSprints(project.id),
             builder: (context, sprintSnapshot) {
               if (!sprintSnapshot.hasData)
                 return const Center(child: CircularProgressIndicator());
               final sprints = sprintSnapshot.data!;
-              final now = DateTime.now();
               final activeSprint = sprints.firstWhere(
-                (s) => s.startDate.isBefore(now) && s.endDate.isAfter(now),
-                orElse: () =>
-                    Sprint(id: 'dummy', name: '', startDate: now, endDate: now),
+                (s) =>
+                    s.status == SprintStatus.inProgress, // Find ACTIVE sprint
+                orElse: () => Sprint(
+                  id: 'dummy',
+                  name: '',
+                  startDate: DateTime.now(),
+                  endDate: DateTime.now(),
+                ),
               );
 
               if (activeSprint.id == 'dummy') {
                 return Center(
-                  child: Text(
-                    "No active sprint",
-                    style: GoogleFonts.inter(color: Colors.grey),
+                  child: Column(
+                    children: [
+                      Icon(Icons.inbox, size: 48, color: Colors.grey[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Không có Sprint nào đang chạy",
+                        style: GoogleFonts.inter(color: Colors.grey),
+                      ),
+                    ],
                   ),
                 );
               }
 
-              return StreamBuilder<List<UserStory>>(
-                // Assuming tasks are user stories now
-                stream: UserStoryRepository().getStoriesForSprint(project.id, activeSprint.id),
-                builder: (context, storySnapshot) {
-                  if (!storySnapshot.hasData)
+              return StreamBuilder<List<ProjectTask>>(
+                stream: DatabaseService().getProjectTasks(activeSprint.id),
+                builder: (context, taskSnapshot) {
+                  if (!taskSnapshot.hasData)
                     return const Center(child: CircularProgressIndicator());
-                  final stories = storySnapshot.data!;
+                  final tasks = taskSnapshot.data!;
 
-                  int done = stories
-                      .where((t) => t.status == UserStoryStatus.done)
+                  int done = tasks
+                      .where(
+                        (t) =>
+                            t.status == ProjectTaskStatus.done ||
+                            t.status == ProjectTaskStatus.verified,
+                      )
                       .length;
-                  int inProgress = stories
-                      .where((t) => t.status == UserStoryStatus.inProgress)
+                  int inProgress = tasks
+                      .where((t) => t.status == ProjectTaskStatus.inProgress)
                       .length;
-                  int total = stories.length;
+                  int total = tasks.length;
 
                   return Column(
                     children: [
+                      if (activeSprint.goal.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.blue.shade600,
+                                Colors.blue.shade400,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.blue.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.flag,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "Mục tiêu Sprint: ${activeSprint.name}",
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                activeSprint.goal,
+                                style: GoogleFonts.inter(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       GridView.count(
                         crossAxisCount: 2,
                         crossAxisSpacing: 12,
@@ -304,21 +383,21 @@ class SummaryTab extends StatelessWidget {
                             iconColor: const Color(0xFF3B82F6),
                             bgColor: const Color(0xFFDBEAFE),
                             count: "$inProgress in progress",
-                            label: "current active tasks",
+                            label: "active tasks",
                             hasSparkle: false,
                           ),
                           _buildStatCard(
                             icon: Icons.add,
                             iconColor: const Color(0xFF8B5CF6),
-                            bgColor: const Color(0xFFEDE9FE), // Violet 100
+                            bgColor: const Color(0xFFEDE9FE),
                             count: "$total total",
-                            label: "in current sprint",
+                            label: "tasks in sprint",
                             hasSparkle: false,
                           ),
                           _buildStatCard(
                             icon: Icons.calendar_today,
-                            iconColor: const Color(0xFFEF4444), // Red 500
-                            bgColor: const Color(0xFFFEE2E2), // Red 100
+                            iconColor: const Color(0xFFEF4444),
+                            bgColor: const Color(0xFFFEE2E2),
                             count: DateFormat.MMMd().format(
                               activeSprint.endDate,
                             ),
@@ -327,8 +406,59 @@ class SummaryTab extends StatelessWidget {
                           ),
                         ],
                       ),
+
+                      // HERE IS THE NEW SECTION
+                      _buildActiveTasksList(tasks),
+
                       const SizedBox(height: 24),
-                      _buildOverallStatusChart(stories),
+                      _buildOverallStatusChart(tasks),
+                      const SizedBox(height: 24),
+                      _buildBurndownChart(activeSprint, tasks),
+                      const SizedBox(height: 24),
+                      Text(
+                        "Số liệu thống kê",
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        childAspectRatio: 1.3,
+                        children: [
+                          _buildStatCard(
+                            icon: Icons.check_circle,
+                            iconColor: const Color(0xFF10B981),
+                            bgColor: const Color(0xFFECFDF5),
+                            count: tasks
+                                .where((t) => t.isDoDComplete)
+                                .length
+                                .toString(),
+                            label: "Tasks đạt DoD",
+                            hasSparkle: false,
+                          ),
+                          _buildStatCard(
+                            icon: Icons.warning,
+                            iconColor: const Color(0xFFF59E0B),
+                            bgColor: const Color(0xFFFFFBEB),
+                            count: tasks
+                                .where((t) => t.isOverdue)
+                                .length
+                                .toString(),
+                            label: "Tasks quá hạn",
+                            hasSparkle: false,
+                          ),
+                          _buildVelocityCard(sprints),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      _buildBlockersSection(activeSprint.id),
+                      const SizedBox(height: 24),
                     ],
                   );
                 },
@@ -340,19 +470,262 @@ class SummaryTab extends StatelessWidget {
     );
   }
 
-  Widget _buildOverallStatusChart(List<UserStory> stories) {
-    int todo = stories
+  Widget _buildActiveTasksList(List<ProjectTask> tasks) {
+    final activeTasks = tasks
+        .where((t) => t.status == ProjectTaskStatus.inProgress)
+        .toList();
+
+    if (activeTasks.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.flash_on,
+                color: Colors.blue.shade700,
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              "Công việc đang thực hiện",
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1F2937),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: activeTasks.length,
+          itemBuilder: (context, index) {
+            final task = activeTasks[index];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      if (task.dueDate != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 12,
+                                color: Colors.orange.shade800,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                DateFormat('dd/MM').format(task.dueDate!),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.orange.shade800,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVelocityCard(List<Sprint> sprints) {
+    final completedSprints = sprints
+        .where((s) => s.status == SprintStatus.completed)
+        .toList();
+    if (completedSprints.isEmpty) {
+      return _buildStatCard(
+        icon: Icons.speed,
+        iconColor: Colors.grey,
+        bgColor: Colors.grey.shade100,
+        count: "0",
+        label: "Vận tốc TB",
+        hasSparkle: false,
+      );
+    }
+
+    // This is a simplified velocity - in a real app, we'd sum story points of DONE stories in those sprints
+    // For now, let's assume a placeholder or calculate if we had points data here.
+    // Since we don't have all stories of all sprints in this context easily,
+    // we'll show the number of completed sprints as a proxy or a "Coming Soon" metric.
+    return _buildStatCard(
+      icon: Icons.speed,
+      iconColor: Colors.purple,
+      bgColor: Colors.purple.shade50,
+      count: "${completedSprints.length} Sprints",
+      label: "Đã hoàn thành",
+      hasSparkle: true,
+    );
+  }
+
+  Widget _buildBlockersSection(String sprintId) {
+    return StreamBuilder<List<String>>(
+      stream: DatabaseService().getSprintBlockers(sprintId),
+      builder: (context, snapshot) {
+        final blockers = snapshot.data ?? [];
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: blockers.isNotEmpty
+                ? Border.all(color: Colors.red.shade200, width: 2)
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.report_problem,
+                    color: blockers.isNotEmpty ? Colors.red : Colors.grey,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Trở ngại & Chặn (Blockers)",
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: blockers.isNotEmpty
+                          ? Colors.red.shade700
+                          : Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (blockers.isEmpty)
+                Text(
+                  "Hiện tại không có trở ngại nào được báo cáo.",
+                  style: GoogleFonts.inter(color: Colors.grey, fontSize: 13),
+                )
+              else
+                ...blockers.map(
+                  (b) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.circle, size: 6, color: Colors.red),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            b,
+                            style: GoogleFonts.inter(
+                              color: Colors.red.shade900,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOverallStatusChart(List<ProjectTask> tasks) {
+    int todo = tasks.where((t) => t.status == ProjectTaskStatus.todo).length;
+    int inProgress = tasks
+        .where((t) => t.status == ProjectTaskStatus.inProgress)
+        .length;
+    int done = tasks
         .where(
           (t) =>
-              t.status == UserStoryStatus.todo ||
-              t.status == UserStoryStatus.inSprint,
+              t.status == ProjectTaskStatus.done ||
+              t.status == ProjectTaskStatus.verified,
         )
         .length;
-    int inProgress = stories
-        .where((t) => t.status == UserStoryStatus.inProgress)
-        .length;
-    int done = stories.where((t) => t.status == UserStoryStatus.done).length;
-    int total = stories.length;
+    int total = tasks.length;
+
+    if (total == 0) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Text(
+              "Tổng quan về trạng thái",
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "Chưa có task nào trong sprint này",
+              style: GoogleFonts.inter(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -443,28 +816,6 @@ class SummaryTab extends StatelessWidget {
     );
   }
 
-  Widget _buildDropdownFilter() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            "Người được chỉ định",
-            style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[700]),
-          ),
-          const SizedBox(width: 4),
-          Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.grey[600]),
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatCard({
     required IconData icon,
     required Color iconColor,
@@ -516,6 +867,236 @@ class SummaryTab extends StatelessWidget {
     );
   }
 
+  Widget _buildBurndownChart(Sprint sprint, List<ProjectTask> tasks) {
+    if (tasks.isEmpty) return const SizedBox.shrink();
+
+    final totalTasks = tasks.length;
+    final doneTasks = tasks
+        .where(
+          (t) =>
+              t.status == ProjectTaskStatus.done ||
+              t.status == ProjectTaskStatus.verified,
+        )
+        .length;
+    final remainingTasks = totalTasks - doneTasks;
+
+    final sprintDuration = sprint.endDate.difference(sprint.startDate).inDays;
+    if (sprintDuration <= 0) return const SizedBox.shrink();
+
+    // Calculate progress fraction
+    final now = DateTime.now();
+    final elapsedDays = now.difference(sprint.startDate).inDays;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(top: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Burn-down Chart",
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    "Tiến độ hoàn thành Sprint",
+                    style: GoogleFonts.inter(
+                      color: Colors.grey[500],
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  "${((doneTasks / totalTasks) * 100).toInt()}% Done",
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 30),
+          SizedBox(
+            height: 180,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (value) =>
+                      FlLine(color: Colors.grey.shade100, strokeWidth: 1),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      interval: (sprintDuration / 4).clamp(1, 14).toDouble(),
+                      getTitlesWidget: (value, meta) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            "D${value.toInt()}",
+                            style: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontSize: 10,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: (totalTasks / 4).clamp(1, 100).toDouble(),
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          value.toInt().toString(),
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                      reservedSize: 28,
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                minX: 0,
+                maxX: sprintDuration.toDouble(),
+                minY: 0,
+                maxY: totalTasks.toDouble(),
+                lineBarsData: [
+                  // Ideal Burn-down Line
+                  LineChartBarData(
+                    spots: [
+                      FlSpot(0, totalTasks.toDouble()),
+                      FlSpot(sprintDuration.toDouble(), 0),
+                    ],
+                    isCurved: false,
+                    color: Colors.grey.withOpacity(0.3),
+                    barWidth: 2,
+                    dashArray: [5, 5],
+                    dotData: const FlDotData(show: false),
+                  ),
+                  // Actual Burn-down Line (simplified)
+                  LineChartBarData(
+                    spots: [
+                      FlSpot(0, totalTasks.toDouble()),
+                      if (elapsedDays > 0)
+                        FlSpot(
+                          elapsedDays.toDouble().clamp(
+                            0,
+                            sprintDuration.toDouble(),
+                          ),
+                          remainingTasks.toDouble(),
+                        ),
+                    ],
+                    isCurved: true,
+                    color: Colors.blue,
+                    barWidth: 4,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: Colors.blue.withOpacity(0.1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildChartLegendItem(
+                Colors.grey.withOpacity(0.5),
+                "Lý tưởng",
+                true,
+              ),
+              const SizedBox(width: 24),
+              _buildChartLegendItem(Colors.blue, "Thực tế", false),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartLegendItem(Color color, String label, bool isDashed) {
+    return Row(
+      children: [
+        Container(
+          width: 20,
+          height: 3,
+          decoration: BoxDecoration(
+            color: isDashed ? null : color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: isDashed
+              ? Row(
+                  children: List.generate(
+                    3,
+                    (i) => Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        color: color,
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+        ),
+      ],
+    );
+  }
+
   Widget _buildLegendItem(Color color, String label, String value) {
     return Row(
       children: [
@@ -541,7 +1122,14 @@ class SummaryTab extends StatelessWidget {
 class BacklogTab extends StatefulWidget {
   final Project project;
   final bool isLocked;
-  const BacklogTab({super.key, required this.project, required this.isLocked});
+  final bool isPO;
+  const BacklogTab({
+    super.key,
+    required this.project,
+    required this.isLocked,
+    required this.isPO,
+  });
+
   @override
   State<BacklogTab> createState() => _BacklogTabState();
 }
@@ -571,7 +1159,10 @@ class _BacklogTabState extends State<BacklogTab> {
                 return Column(
                   children: sprints.map((sprint) {
                     return StreamBuilder<List<UserStory>>(
-                      stream: UserStoryRepository().getStoriesForSprint(widget.project.id, sprint.id),
+                      stream: UserStoryRepository().getStoriesForSprint(
+                        widget.project.id,
+                        sprint.id,
+                      ),
                       builder: (context, storySnap) {
                         final stories = storySnap.data ?? [];
                         return Padding(
@@ -605,6 +1196,14 @@ class _BacklogTabState extends State<BacklogTab> {
           ],
         ),
       ),
+      floatingActionButton: (widget.isLocked || !widget.isPO)
+          ? null
+          : FloatingActionButton(
+              heroTag: "add_story_fab",
+              backgroundColor: const Color(0xFF1F2937),
+              onPressed: _showAddStoryDialog,
+              child: const Icon(Icons.add),
+            ),
     );
   }
 
@@ -627,35 +1226,7 @@ class _BacklogTabState extends State<BacklogTab> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            _buildFilterChip("Trạng thái"),
-            const SizedBox(width: 8),
-            _buildFilterChip("Người được chỉ định"),
-          ],
-        ),
       ],
-    );
-  }
-
-  Widget _buildFilterChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[700]),
-          ),
-          const Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.grey),
-        ],
-      ),
     );
   }
 
@@ -1075,7 +1646,16 @@ class _BacklogTabState extends State<BacklogTab> {
 class SprintsTab extends StatefulWidget {
   final Project project;
   final bool isLocked;
-  const SprintsTab({super.key, required this.project, required this.isLocked});
+  final bool isPO;
+  final bool isSM;
+  const SprintsTab({
+    super.key,
+    required this.project,
+    required this.isLocked,
+    required this.isPO,
+    required this.isSM,
+  });
+
   @override
   State<SprintsTab> createState() => _SprintsTabState();
 }
@@ -1272,18 +1852,20 @@ class _SprintsTabState extends State<SprintsTab> {
             itemCount: sprints.length,
             itemBuilder: (context, index) {
               final sprint = sprints[index];
-              final now = DateTime.now();
-              final isActive =
-                  sprint.startDate.isBefore(now) && sprint.endDate.isAfter(now);
-              final isUpcoming = sprint.startDate.isAfter(now);
-              final isCompleted = sprint.endDate.isBefore(now);
+              // Check active based on status, NOT date
+              final hasActiveSprint = sprints.any(
+                (s) => s.status == SprintStatus.inProgress,
+              );
+              final isActive = sprint.status == SprintStatus.inProgress;
+              final isCompleted = sprint.status == SprintStatus.completed;
+              final isUpcoming = sprint.status == SprintStatus.upcoming;
 
               return Card(
                 elevation: isActive ? 4 : 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
-                    color: isActive ? Colors.blue : Colors.grey.shade300,
+                    color: isActive ? Colors.green : Colors.grey.shade300,
                     width: isActive ? 2 : 1,
                   ),
                 ),
@@ -1293,16 +1875,41 @@ class _SprintsTabState extends State<SprintsTab> {
                       ? Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
+                            color: Colors.green.shade50,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
-                            Icons.play_arrow,
-                            color: Colors.blue,
-                            size: 20,
+                          child: const Icon(
+                            Icons
+                                .play_circle_fill, // Biểu tượng Play cho Sprint đang chạy
+                            color: Colors.green,
+                            size: 24,
                           ),
                         )
-                      : null,
+                      : (isCompleted
+                            ? Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.grey,
+                                  size: 20,
+                                ),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.radio_button_unchecked,
+                                  color: Colors.blue.shade300,
+                                  size: 20,
+                                ),
+                              )),
                   title: Row(
                     children: [
                       Expanded(
@@ -1310,7 +1917,7 @@ class _SprintsTabState extends State<SprintsTab> {
                           sprint.name,
                           style: GoogleFonts.inter(
                             fontWeight: FontWeight.bold,
-                            color: isActive ? Colors.blue : Colors.black,
+                            color: isActive ? Colors.green[700] : Colors.black,
                           ),
                         ),
                       ),
@@ -1321,11 +1928,30 @@ class _SprintsTabState extends State<SprintsTab> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            "ĐANG CHẠY",
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                        ),
+                      if (isUpcoming)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
                             color: Colors.blue.shade100,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            "ACTIVE",
+                            "SẮP TỚI",
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -1335,24 +1961,98 @@ class _SprintsTabState extends State<SprintsTab> {
                         ),
                     ],
                   ),
-                  subtitle: Text(
-                    "${DateFormat.MMMd().format(sprint.startDate)} - ${DateFormat.MMMd().format(sprint.endDate)}",
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "${DateFormat.MMMd().format(sprint.startDate)} - ${DateFormat.MMMd().format(sprint.endDate)}",
+                        style: GoogleFonts.inter(fontSize: 12),
+                      ),
+                      if (sprint.goal.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            "Mục tiêu: ${sprint.goal}",
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (!widget.isLocked && !isActive && !isCompleted)
+                      if (isUpcoming && !widget.isLocked)
                         IconButton(
-                          icon: Icon(Icons.arrow_upward, size: 18),
+                          icon: Icon(
+                            Icons.play_circle_outline,
+                            color: hasActiveSprint
+                                ? Colors.grey[300]
+                                : Colors.blue,
+                            size: 28,
+                          ),
+                          tooltip: hasActiveSprint
+                              ? "Hoàn thành Sprint hiện tại trước"
+                              : "Bắt đầu Sprint",
                           onPressed: () {
-                            // Increase priority (lower number = higher priority)
-                            DatabaseService().updateSprintPriority(
-                              sprint.id,
-                              sprint.priority - 1,
-                            );
+                            if (!widget.isPO && !widget.isSM) {
+                              ToastService.show(
+                                title: "Không có quyền",
+                                message:
+                                    "Chỉ PO hoặc SM mới có thể bắt đầu Sprint.",
+                                type: NotificationType.warning,
+                              );
+                              return;
+                            }
+                            if (hasActiveSprint) {
+                              ToastService.show(
+                                title: "Không thể bắt đầu",
+                                message:
+                                    "Đang có một Sprint khác đang chạy. Hãy hoàn thành nó trước.",
+                                type: NotificationType.warning,
+                              );
+                            } else {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text("Bắt đầu Sprint?"),
+                                  content: Text(
+                                    "Bắt đầu thực hiện '${sprint.name}' ngay bây giờ?",
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      child: const Text("Hủy"),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        DatabaseService().updateSprintStatus(
+                                          sprint.id,
+                                          SprintStatus.inProgress,
+                                        );
+                                        Navigator.pop(ctx);
+                                        ToastService.show(
+                                          title: "Sprint đã bắt đầu",
+                                          message:
+                                              "Chúc team làm việc hiệu quả!",
+                                          type: NotificationType.success,
+                                        );
+                                      },
+                                      child: const Text("Bắt đầu"),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
                           },
-                          tooltip: "Increase Priority",
                         ),
+
+                      const SizedBox(width: 8),
                       const Icon(Icons.chevron_right),
                     ],
                   ),
@@ -1381,7 +2081,7 @@ class _SprintsTabState extends State<SprintsTab> {
           );
         },
       ),
-      floatingActionButton: widget.isLocked
+      floatingActionButton: (widget.isLocked || !widget.isPO)
           ? null
           : FloatingActionButton(
               heroTag: "add_sprint_fab",
@@ -1392,7 +2092,3 @@ class _SprintsTabState extends State<SprintsTab> {
     );
   }
 }
-
-
-
-
