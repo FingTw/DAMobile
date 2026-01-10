@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:untitled3/models/task_model.dart';
-import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/data/repositories/task_repository.dart';
 
 class DashboardView extends StatelessWidget {
   const DashboardView({super.key});
@@ -15,7 +15,7 @@ class DashboardView extends StatelessWidget {
 
     return StreamBuilder<List<Task>>(
       // FIX: Point back to the personalTasks stream
-      stream: DatabaseService(uid: user.uid).personalTasks,
+      stream: TaskRepository(uid: user.uid).personalTasks,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart' as storage;
 import 'package:untitled3/models/task_model.dart' as tm;
-import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/data/repositories/task_repository.dart';
 import 'package:collection/collection.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
@@ -25,16 +25,23 @@ class _TaskScreenState extends State<TaskScreen> {
     final user = auth.FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
     if (pickedFile == null) return;
 
     try {
-      final ref = storage.FirebaseStorage.instance.ref('task_evidence/${user.uid}/${task.id}.jpg');
+      final ref = storage.FirebaseStorage.instance.ref(
+        'task_evidence/${user.uid}/${task.id}.jpg',
+      );
       await ref.putFile(File(pickedFile.path));
       final downloadUrl = await ref.getDownloadURL();
-      
-      await DatabaseService(uid: user.uid).updatePersonalTaskEvidence(task.id, downloadUrl);
-      
+
+      await TaskRepository(
+        uid: user.uid,
+      ).updatePersonalTaskEvidence(task.id, downloadUrl);
+
       if (context.mounted) {
         ToastService.show(
           title: "Evidence Uploaded",
@@ -64,29 +71,53 @@ class _TaskScreenState extends State<TaskScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text("Add New Personal Task", style: GoogleFonts.poppins()),
+              title: Text(
+                "Add New Personal Task",
+                style: GoogleFonts.poppins(),
+              ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Task Title *')),
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Task Title *',
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(selectedDate == null
-                        ? "Chọn hạn chót *"
-                        : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDate!)}"),
-                    trailing: const Icon(Icons.calendar_today, color: Colors.blue),
+                    title: Text(
+                      selectedDate == null
+                          ? "Chọn hạn chót *"
+                          : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDate!)}",
+                    ),
+                    trailing: const Icon(
+                      Icons.calendar_today,
+                      color: Colors.blue,
+                    ),
                     onTap: () async {
                       final date = await showDatePicker(
-                          context: context, initialDate: DateTime.now(),
-                          firstDate: DateTime.now(), lastDate: DateTime(2030)
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2030),
                       );
                       if (date != null) {
                         if (!context.mounted) return;
-                        final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.now(),
+                        );
                         if (time != null) {
                           setState(() {
-                            selectedDate = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                            selectedDate = DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              time.hour,
+                              time.minute,
+                            );
                           });
                         }
                       }
@@ -97,7 +128,10 @@ class _TaskScreenState extends State<TaskScreen> {
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Text(
                         "Vui lòng chọn hạn chót",
-                        style: GoogleFonts.poppins(color: Colors.red, fontSize: 12),
+                        style: GoogleFonts.poppins(
+                          color: Colors.red,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   const SizedBox(height: 10),
@@ -106,35 +140,48 @@ class _TaskScreenState extends State<TaskScreen> {
                     isExpanded: true,
                     items: const [
                       DropdownMenuItem(value: 1, child: Text('High Priority')),
-                      DropdownMenuItem(value: 2, child: Text('Medium Priority')),
+                      DropdownMenuItem(
+                        value: 2,
+                        child: Text('Medium Priority'),
+                      ),
                       DropdownMenuItem(value: 3, child: Text('Low Priority')),
                     ],
-                    onChanged: (value) => setState(() => selectedPriority = value!),
+                    onChanged: (value) =>
+                        setState(() => selectedPriority = value!),
                   ),
                 ],
               ),
               actions: [
-                TextButton(child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop()),
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
                 ElevatedButton(
                   child: const Text('Add'),
                   onPressed: () {
-                    if (titleController.text.isNotEmpty && selectedDate != null) {
+                    if (titleController.text.isNotEmpty &&
+                        selectedDate != null) {
                       final user = auth.FirebaseAuth.instance.currentUser;
                       if (user != null) {
-                        DatabaseService(uid: user.uid).addPersonalTask(
-                            titleController.text,
-                            selectedPriority,
-                            selectedDate!,
-                            user.uid
+                        TaskRepository(uid: user.uid).addPersonalTask(
+                          titleController.text,
+                          selectedPriority,
+                          selectedDate!,
+                          user.uid,
                         );
-                        ToastService.show(title: "Task Added", message: "Success", type: NotificationType.success);
+                        ToastService.show(
+                          title: "Task Added",
+                          message: "Success",
+                          type: NotificationType.success,
+                        );
                         Navigator.of(context).pop();
                       }
                     } else {
                       ToastService.show(
-                          title: "Missing Information",
-                          message: "Please fill in all required fields",
-                          type: NotificationType.warning);
+                        title: "Missing Information",
+                        message: "Please fill in all required fields",
+                        type: NotificationType.warning,
+                      );
                     }
                   },
                 ),
@@ -154,7 +201,7 @@ class _TaskScreenState extends State<TaskScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: StreamBuilder<List<tm.Task>>(
-        stream: DatabaseService(uid: user.uid).personalTasks,
+        stream: TaskRepository(uid: user.uid).personalTasks,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -250,9 +297,21 @@ class _TaskScreenState extends State<TaskScreen> {
                 Expanded(
                   child: TabBarView(
                     children: [
-                      _buildTaskList(todoTasks, "No tasks to do.", _uploadEvidence),
-                      _buildTaskList(inProgressTasks, "No tasks in progress.", _uploadEvidence),
-                      _buildTaskList(doneTasks, "No completed tasks yet.", _uploadEvidence),
+                      _buildTaskList(
+                        todoTasks,
+                        "No tasks to do.",
+                        _uploadEvidence,
+                      ),
+                      _buildTaskList(
+                        inProgressTasks,
+                        "No tasks in progress.",
+                        _uploadEvidence,
+                      ),
+                      _buildTaskList(
+                        doneTasks,
+                        "No completed tasks yet.",
+                        _uploadEvidence,
+                      ),
                     ],
                   ),
                 ),
@@ -285,7 +344,11 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
-  Widget _buildTaskList(List<tm.Task> tasks, String emptyMessage, Future<void> Function(BuildContext, tm.Task) uploadEvidence) {
+  Widget _buildTaskList(
+    List<tm.Task> tasks,
+    String emptyMessage,
+    Future<void> Function(BuildContext, tm.Task) uploadEvidence,
+  ) {
     if (tasks.isEmpty) {
       return Center(
         child: Text(
@@ -298,18 +361,24 @@ class _TaskScreenState extends State<TaskScreen> {
     final sortedTasks = List<tm.Task>.from(tasks);
     sortedTasks.sort((a, b) {
       final now = DateTime.now();
-      final aOverdue = a.dueDate != null && a.dueDate!.isBefore(now) && a.status != tm.TaskStatus.done;
-      final bOverdue = b.dueDate != null && b.dueDate!.isBefore(now) && b.status != tm.TaskStatus.done;
-      
+      final aOverdue =
+          a.dueDate != null &&
+          a.dueDate!.isBefore(now) &&
+          a.status != tm.TaskStatus.done;
+      final bOverdue =
+          b.dueDate != null &&
+          b.dueDate!.isBefore(now) &&
+          b.status != tm.TaskStatus.done;
+
       if (aOverdue && !bOverdue) return -1;
       if (!aOverdue && bOverdue) return 1;
-      
+
       if (a.dueDate != null && b.dueDate != null) {
         return a.dueDate!.compareTo(b.dueDate!);
       }
       if (a.dueDate != null) return -1;
       if (b.dueDate != null) return 1;
-      
+
       return a.createdAt.compareTo(b.createdAt);
     });
 
@@ -329,7 +398,11 @@ class _TaskScreenState extends State<TaskScreen> {
     );
   }
 
-  Widget _buildTaskSection(String title, List<tm.Task> tasks, Future<void> Function(BuildContext, tm.Task) uploadEvidence) {
+  Widget _buildTaskSection(
+    String title,
+    List<tm.Task> tasks,
+    Future<void> Function(BuildContext, tm.Task) uploadEvidence,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -344,7 +417,9 @@ class _TaskScreenState extends State<TaskScreen> {
             ),
           ),
         ),
-        ...tasks.map((task) => _TaskListItem(task: task, uploadEvidence: uploadEvidence)),
+        ...tasks.map(
+          (task) => _TaskListItem(task: task, uploadEvidence: uploadEvidence),
+        ),
         const SizedBox(height: 30),
       ],
     );
@@ -392,8 +467,8 @@ class _TaskListItem extends StatelessWidget {
             } else {
               newStatus = tm.TaskStatus.done;
             }
-            
-            DatabaseService(
+
+            TaskRepository(
               uid: user.uid,
             ).updatePersonalTaskStatus(task.id, newStatus);
 
@@ -434,14 +509,20 @@ class _TaskListItem extends StatelessWidget {
                     if (task.dueDate != null) ...[
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                          color:
+                              task.dueDate!.isBefore(DateTime.now()) && !isDone
                               ? Colors.red.shade50
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                            color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                            color:
+                                task.dueDate!.isBefore(DateTime.now()) &&
+                                    !isDone
                                 ? Colors.red
                                 : Colors.grey.shade300,
                             width: 1,
@@ -453,24 +534,33 @@ class _TaskListItem extends StatelessWidget {
                             Icon(
                               Icons.access_time,
                               size: 12,
-                              color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                              color:
+                                  task.dueDate!.isBefore(DateTime.now()) &&
+                                      !isDone
                                   ? Colors.red
                                   : Colors.grey.shade600,
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              DateFormat('dd/MM/yyyy HH:mm').format(task.dueDate!),
+                              DateFormat(
+                                'dd/MM/yyyy HH:mm',
+                              ).format(task.dueDate!),
                               style: GoogleFonts.poppins(
                                 fontSize: 11,
-                                fontWeight: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                                fontWeight:
+                                    task.dueDate!.isBefore(DateTime.now()) &&
+                                        !isDone
                                     ? FontWeight.bold
                                     : FontWeight.normal,
-                                color: task.dueDate!.isBefore(DateTime.now()) && !isDone
+                                color:
+                                    task.dueDate!.isBefore(DateTime.now()) &&
+                                        !isDone
                                     ? Colors.red
                                     : Colors.grey.shade700,
                               ),
                             ),
-                            if (task.dueDate!.isBefore(DateTime.now()) && !isDone) ...[
+                            if (task.dueDate!.isBefore(DateTime.now()) &&
+                                !isDone) ...[
                               const SizedBox(width: 4),
                               Text(
                                 "QUÁ HẠN",
@@ -485,7 +575,9 @@ class _TaskListItem extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (isDone && task.evidenceLink != null && task.evidenceLink!.isNotEmpty) ...[
+                    if (isDone &&
+                        task.evidenceLink != null &&
+                        task.evidenceLink!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
@@ -499,7 +591,11 @@ class _TaskListItem extends StatelessWidget {
                               width: 60,
                               height: 60,
                               color: Colors.grey[300],
-                              child: Icon(Icons.broken_image, size: 30, color: Colors.grey[600]),
+                              child: Icon(
+                                Icons.broken_image,
+                                size: 30,
+                                color: Colors.grey[600],
+                              ),
                             );
                           },
                           loadingBuilder: (context, child, loadingProgress) {
@@ -510,8 +606,10 @@ class _TaskListItem extends StatelessWidget {
                               color: Colors.grey[200],
                               child: Center(
                                 child: CircularProgressIndicator(
-                                  value: loadingProgress.expectedTotalBytes != null
-                                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                  value:
+                                      loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
                                       : null,
                                 ),
                               ),
@@ -523,7 +621,8 @@ class _TaskListItem extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isDone && (task.evidenceLink == null || task.evidenceLink!.isEmpty))
+              if (isDone &&
+                  (task.evidenceLink == null || task.evidenceLink!.isEmpty))
                 IconButton(
                   icon: Icon(Icons.camera_alt, color: Colors.blue.shade400),
                   onPressed: () => uploadEvidence(context, task),
@@ -533,11 +632,12 @@ class _TaskListItem extends StatelessWidget {
                 icon: Icon(Icons.delete_outline, color: Colors.grey.shade400),
                 onPressed: () {
                   if (user != null) {
-                    DatabaseService(uid: user.uid).deletePersonalTask(task.id);
+                    TaskRepository(uid: user.uid).deletePersonalTask(task.id);
                     ToastService.show(
-                        title: "Task Deleted",
-                        message: "'${task.title}' has been removed.",
-                        type: NotificationType.warning);
+                      title: "Task Deleted",
+                      message: "'${task.title}' has been removed.",
+                      type: NotificationType.warning,
+                    );
                   }
                 },
                 tooltip: "Delete Task",
