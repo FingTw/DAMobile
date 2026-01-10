@@ -945,9 +945,7 @@ class _BacklogTabState extends State<BacklogTab> {
               const SizedBox(height: 20),
               Expanded(
                 child: StreamBuilder<List<Sprint>>(
-                  stream: DatabaseService(
-                    uid: FirebaseAuth.instance.currentUser?.uid,
-                  ).getSprints(widget.project.id),
+                  stream: SprintRepository().getSprints(widget.project.id),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData || snapshot.data!.isEmpty) {
                       return const Center(
@@ -963,9 +961,7 @@ class _BacklogTabState extends State<BacklogTab> {
                           title: Text(sprint.name),
                           onTap: () async {
                             final navigator = Navigator.of(context);
-                            await DatabaseService(
-                              uid: FirebaseAuth.instance.currentUser?.uid,
-                            ).addStoryToSprint(
+                            await UserStoryRepository().addStoryToSprint(
                               widget.project.id,
                               sprint.id,
                               story.id,
@@ -1047,9 +1043,7 @@ class _BacklogTabState extends State<BacklogTab> {
                 ),
                 onPressed: () {
                   if (titleController.text.isNotEmpty) {
-                    DatabaseService(
-                      uid: FirebaseAuth.instance.currentUser?.uid,
-                    ).addUserStory(
+                    UserStoryRepository().addUserStory(
                       widget.project.id,
                       titleController.text,
                       "",
@@ -1221,9 +1215,7 @@ class _SprintsTabState extends State<SprintsTab> {
                     onPressed: () {
                       if (nameController.text.isNotEmpty &&
                           goalController.text.isNotEmpty) {
-                        DatabaseService(
-                          uid: FirebaseAuth.instance.currentUser?.uid,
-                        ).addSprintWithGoal(
+                        SprintRepository().addSprintWithGoal(
                           widget.project.id,
                           nameController.text,
                           startDate,
@@ -1269,9 +1261,7 @@ class _SprintsTabState extends State<SprintsTab> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       body: StreamBuilder<List<Sprint>>(
-        stream: DatabaseService(
-          uid: FirebaseAuth.instance.currentUser?.uid,
-        ).getSprints(widget.project.id),
+        stream: SprintRepository().getSprints(widget.project.id),
         builder: (context, snapshot) {
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text("No sprints."));
@@ -1402,5 +1392,7 @@ class _SprintsTabState extends State<SprintsTab> {
     );
   }
 }
+
+
 
 
