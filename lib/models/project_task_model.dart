@@ -1,4 +1,3 @@
-
 enum ProjectTaskStatus { todo, inProgress, done, verified }
 
 class ProjectTask {
@@ -6,12 +5,13 @@ class ProjectTask {
   final String title;
   final String storyId;
   final ProjectTaskStatus status;
-  final String assigneeId; 
-  final String evidenceLink; 
+  final String assigneeId;
+  final String evidenceLink;
   final String evidenceNotes; // New field for notes
   final DateTime createdAt;
   final DateTime? startDate; // Thời gian bắt đầu task
   final DateTime? dueDate;
+  final Map<String, bool> dodChecklist; // DoD item description -> completed
 
   ProjectTask({
     required this.id,
@@ -24,6 +24,7 @@ class ProjectTask {
     required this.createdAt,
     this.startDate,
     this.dueDate,
+    this.dodChecklist = const {},
   });
 
   factory ProjectTask.fromMap(Map<String, dynamic> data, String documentId) {
@@ -45,6 +46,9 @@ class ProjectTask {
       dueDate: data['dueDate'] != null
           ? DateTime.fromMillisecondsSinceEpoch(data['dueDate'])
           : null,
+      dodChecklist: data['dodChecklist'] != null
+          ? Map<String, bool>.from(data['dodChecklist'])
+          : {},
     );
   }
 
@@ -57,6 +61,27 @@ class ProjectTask {
 
   bool get isOverdue {
     if (dueDate == null) return false;
-    return dueDate!.isBefore(DateTime.now()) && status != ProjectTaskStatus.done;
+    return dueDate!.isBefore(DateTime.now()) &&
+        status != ProjectTaskStatus.done;
+  }
+
+  // DoD helper methods
+  bool get isDoDComplete {
+    if (dodChecklist.isEmpty) return true;
+    return dodChecklist.values.every((completed) => completed);
+  }
+
+  double get dodProgress {
+    if (dodChecklist.isEmpty) return 1.0;
+    final completed = dodChecklist.values.where((v) => v).length;
+    return completed / dodChecklist.length;
+  }
+
+  int get dodCompletedCount {
+    return dodChecklist.values.where((v) => v).length;
+  }
+
+  int get dodTotalCount {
+    return dodChecklist.length;
   }
 }

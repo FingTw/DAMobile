@@ -10,6 +10,7 @@ import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/screens/sprint_details_screen.dart';
 import 'package:untitled3/screens/member_management_screen.dart';
 import 'package:untitled3/screens/user_story_detail_screen.dart';
+import 'package:untitled3/screens/definition_of_done_screen.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
 
@@ -66,7 +67,8 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
       builder: (context) => AlertDialog(
         title: const Text("Delete Project"),
         content: Text(
-            "This will permanently delete '${widget.project.name}' and all its data. This action cannot be undone."),
+          "This will permanently delete '${widget.project.name}' and all its data. This action cannot be undone.",
+        ),
         actions: [
           TextButton(
             child: const Text("Cancel"),
@@ -109,7 +111,8 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isLocked) const Icon(Icons.lock, color: Colors.orange, size: 20),
+            if (_isLocked)
+              const Icon(Icons.lock, color: Colors.orange, size: 20),
             const SizedBox(width: 8),
             Text(
               widget.project.name,
@@ -123,6 +126,16 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.verified, color: Color(0xFF2563EB)),
+            tooltip: 'Definition of Done',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DefinitionOfDoneScreen(project: widget.project),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.people_outline),
             onPressed: () => Navigator.push(
@@ -141,14 +154,18 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
               itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'lock',
-                  child: Text(widget.project.isLocked
-                      ? "Re-open Project"
-                      : "Mark as Completed"),
+                  child: Text(
+                    widget.project.isLocked
+                        ? "Re-open Project"
+                        : "Mark as Completed",
+                  ),
                 ),
                 const PopupMenuItem(
                   value: 'delete',
-                  child: Text("Delete Project",
-                      style: TextStyle(color: Colors.red)),
+                  child: Text(
+                    "Delete Project",
+                    style: TextStyle(color: Colors.red),
+                  ),
                 ),
               ],
             ),
@@ -171,13 +188,18 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen>
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12.0),
-              color: _isPastDeadline ? Colors.red.shade700 : Colors.amber.shade700,
+              color: _isPastDeadline
+                  ? Colors.red.shade700
+                  : Colors.amber.shade700,
               child: Text(
                 _isPastDeadline
                     ? "Project is past its deadline and is now archived."
                     : "This project is marked as completed and is now read-only.",
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           Expanded(
@@ -222,7 +244,8 @@ class SummaryTab extends StatelessWidget {
           StreamBuilder<List<Sprint>>(
             stream: DatabaseService(uid: uid).getSprints(project.id),
             builder: (context, sprintSnapshot) {
-              if (!sprintSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+              if (!sprintSnapshot.hasData)
+                return const Center(child: CircularProgressIndicator());
               final sprints = sprintSnapshot.data!;
               final now = DateTime.now();
               final activeSprint = sprints.firstWhere(
@@ -240,14 +263,22 @@ class SummaryTab extends StatelessWidget {
                 );
               }
 
-              return StreamBuilder<List<UserStory>>( // Assuming tasks are user stories now
-                stream: DatabaseService(uid: uid).getStoriesForSprint(project.id, activeSprint.id),
+              return StreamBuilder<List<UserStory>>(
+                // Assuming tasks are user stories now
+                stream: DatabaseService(
+                  uid: uid,
+                ).getStoriesForSprint(project.id, activeSprint.id),
                 builder: (context, storySnapshot) {
-                  if (!storySnapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  if (!storySnapshot.hasData)
+                    return const Center(child: CircularProgressIndicator());
                   final stories = storySnapshot.data!;
 
-                  int done = stories.where((t) => t.status == UserStoryStatus.done).length;
-                  int inProgress = stories.where((t) => t.status == UserStoryStatus.inProgress).length;
+                  int done = stories
+                      .where((t) => t.status == UserStoryStatus.done)
+                      .length;
+                  int inProgress = stories
+                      .where((t) => t.status == UserStoryStatus.inProgress)
+                      .length;
                   int total = stories.length;
 
                   return Column(
@@ -260,7 +291,7 @@ class SummaryTab extends StatelessWidget {
                         childAspectRatio: 1.4,
                         physics: const NeverScrollableScrollPhysics(),
                         children: [
-                           _buildStatCard(
+                          _buildStatCard(
                             icon: Icons.check,
                             iconColor: const Color(0xFF10B981),
                             bgColor: const Color(0xFFD1FAE5),
@@ -288,8 +319,9 @@ class SummaryTab extends StatelessWidget {
                             icon: Icons.calendar_today,
                             iconColor: const Color(0xFFEF4444), // Red 500
                             bgColor: const Color(0xFFFEE2E2), // Red 100
-                            count:
-                                DateFormat.MMMd().format(activeSprint.endDate),
+                            count: DateFormat.MMMd().format(
+                              activeSprint.endDate,
+                            ),
                             label: "Sprint End Date",
                             hasSparkle: false,
                           ),
@@ -309,8 +341,16 @@ class SummaryTab extends StatelessWidget {
   }
 
   Widget _buildOverallStatusChart(List<UserStory> stories) {
-    int todo = stories.where((t) => t.status == UserStoryStatus.todo || t.status == UserStoryStatus.inSprint).length;
-    int inProgress = stories.where((t) => t.status == UserStoryStatus.inProgress).length;
+    int todo = stories
+        .where(
+          (t) =>
+              t.status == UserStoryStatus.todo ||
+              t.status == UserStoryStatus.inSprint,
+        )
+        .length;
+    int inProgress = stories
+        .where((t) => t.status == UserStoryStatus.inProgress)
+        .length;
     int done = stories.where((t) => t.status == UserStoryStatus.done).length;
     int total = stories.length;
 
@@ -494,6 +534,7 @@ class SummaryTab extends StatelessWidget {
     );
   }
 }
+
 // ---------------------------------------------------------------------------
 // BACKLOG TAB
 // ---------------------------------------------------------------------------
@@ -530,8 +571,9 @@ class _BacklogTabState extends State<BacklogTab> {
                 return Column(
                   children: sprints.map((sprint) {
                     return StreamBuilder<List<UserStory>>(
-                      stream: DatabaseService(uid: uid)
-                          .getStoriesForSprint(widget.project.id, sprint.id),
+                      stream: DatabaseService(
+                        uid: uid,
+                      ).getStoriesForSprint(widget.project.id, sprint.id),
                       builder: (context, storySnap) {
                         final stories = storySnap.data ?? [];
                         return Padding(
@@ -567,7 +609,7 @@ class _BacklogTabState extends State<BacklogTab> {
       ),
     );
   }
-  
+
   Widget _buildSearchAndFilter() {
     return Column(
       children: [
@@ -832,10 +874,7 @@ class _BacklogTabState extends State<BacklogTab> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            const Icon(
-              Icons.check_box_outline_blank,
-              color: Colors.grey,
-            ),
+            const Icon(Icons.check_box_outline_blank, color: Colors.grey),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -948,7 +987,7 @@ class _BacklogTabState extends State<BacklogTab> {
     );
   }
 
-   void _showAddStoryDialog() {
+  void _showAddStoryDialog() {
     final titleController = TextEditingController();
     final pointsController = TextEditingController();
 
@@ -1052,6 +1091,8 @@ class SprintsTab extends StatefulWidget {
 class _SprintsTabState extends State<SprintsTab> {
   Future<void> _showAddSprintDialog() async {
     final nameController = TextEditingController();
+    final goalController = TextEditingController();
+    final goalDescriptionController = TextEditingController();
     DateTime startDate = DateTime.now();
     DateTime endDate = DateTime.now().add(const Duration(days: 14));
 
@@ -1069,113 +1110,156 @@ class _SprintsTabState extends State<SprintsTab> {
             right: 20,
             top: 20,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Create Sprint",
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: "Name",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Create Sprint",
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: context,
-                          initialDate: startDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2040),
-                        );
-                        if (d != null) setState(() => startDate = d);
-                      },
-                      icon: const Icon(Icons.calendar_today, size: 16),
-                      label: Text(DateFormat.yMMMd().format(startDate)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text("-"),
-                  ),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: context,
-                          initialDate: endDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2040),
-                        );
-                        if (d != null) setState(() => endDate = d);
-                      },
-                      icon: const Icon(Icons.calendar_today, size: 16),
-                      label: Text(DateFormat.yMMMd().format(endDate)),
-                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
+                const SizedBox(height: 20),
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: "Sprint Name *",
+                    hintText: "e.g., Sprint 1",
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: () {
-                    if (nameController.text.isNotEmpty) {
-                      DatabaseService(
-                        uid: FirebaseAuth.instance.currentUser?.uid,
-                      ).addSprint(
-                        widget.project.id,
-                        nameController.text,
-                        startDate,
-                        endDate,
-                      );
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: const Text(
-                    "Create",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: goalController,
+                  decoration: InputDecoration(
+                    labelText: "Sprint Goal *",
+                    hintText: "e.g., Complete user authentication",
+                    prefixIcon: const Icon(Icons.flag),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-            ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: goalDescriptionController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: "Goal Description",
+                    hintText: "Detailed description of what we aim to achieve",
+                    prefixIcon: const Icon(Icons.description),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final d = await showDatePicker(
+                            context: context,
+                            initialDate: startDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2040),
+                          );
+                          if (d != null) setState(() => startDate = d);
+                        },
+                        icon: const Icon(Icons.calendar_today, size: 16),
+                        label: Text(DateFormat.yMMMd().format(startDate)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text("-"),
+                    ),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final d = await showDatePicker(
+                            context: context,
+                            initialDate: endDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2040),
+                          );
+                          if (d != null) setState(() => endDate = d);
+                        },
+                        icon: const Icon(Icons.calendar_today, size: 16),
+                        label: Text(DateFormat.yMMMd().format(endDate)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () {
+                      if (nameController.text.isNotEmpty &&
+                          goalController.text.isNotEmpty) {
+                        DatabaseService(
+                          uid: FirebaseAuth.instance.currentUser?.uid,
+                        ).addSprintWithGoal(
+                          widget.project.id,
+                          nameController.text,
+                          startDate,
+                          endDate,
+                          goalController.text.trim(),
+                          goalDescriptionController.text.trim(),
+                        );
+                        Navigator.pop(context);
+                        ToastService.show(
+                          title: "Sprint Created",
+                          message:
+                              "Sprint with goal has been created successfully",
+                          type: NotificationType.success,
+                        );
+                      } else {
+                        ToastService.show(
+                          title: "Missing Information",
+                          message: "Please fill in Sprint Name and Goal",
+                          type: NotificationType.warning,
+                        );
+                      }
+                    },
+                    child: const Text(
+                      "Create",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
@@ -1201,10 +1285,11 @@ class _SprintsTabState extends State<SprintsTab> {
             itemBuilder: (context, index) {
               final sprint = sprints[index];
               final now = DateTime.now();
-              final isActive = sprint.startDate.isBefore(now) && sprint.endDate.isAfter(now);
+              final isActive =
+                  sprint.startDate.isBefore(now) && sprint.endDate.isAfter(now);
               final isUpcoming = sprint.startDate.isAfter(now);
               final isCompleted = sprint.endDate.isBefore(now);
-              
+
               return Card(
                 elevation: isActive ? 4 : 0,
                 shape: RoundedRectangleBorder(
@@ -1223,7 +1308,11 @@ class _SprintsTabState extends State<SprintsTab> {
                             color: Colors.blue.shade50,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.play_arrow, color: Colors.blue, size: 20),
+                          child: Icon(
+                            Icons.play_arrow,
+                            color: Colors.blue,
+                            size: 20,
+                          ),
                         )
                       : null,
                   title: Row(
@@ -1239,7 +1328,10 @@ class _SprintsTabState extends State<SprintsTab> {
                       ),
                       if (isActive)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.blue.shade100,
                             borderRadius: BorderRadius.circular(12),
@@ -1266,7 +1358,10 @@ class _SprintsTabState extends State<SprintsTab> {
                           icon: Icon(Icons.arrow_upward, size: 18),
                           onPressed: () {
                             // Increase priority (lower number = higher priority)
-                            DatabaseService().updateSprintPriority(sprint.id, sprint.priority - 1);
+                            DatabaseService().updateSprintPriority(
+                              sprint.id,
+                              sprint.priority - 1,
+                            );
                           },
                           tooltip: "Increase Priority",
                         ),
@@ -1274,19 +1369,23 @@ class _SprintsTabState extends State<SprintsTab> {
                     ],
                   ),
                   onTap: () {
-                     if (!widget.isLocked) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SprintDetailsScreen(
-                              project: widget.project,
-                              sprint: sprint,
-                            ),
+                    if (!widget.isLocked) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SprintDetailsScreen(
+                            project: widget.project,
+                            sprint: sprint,
                           ),
-                        );
-                     } else {
-                        ToastService.show(title: "Project Locked", message: "This project is read-only.", type: NotificationType.info);
-                     }
+                        ),
+                      );
+                    } else {
+                      ToastService.show(
+                        title: "Project Locked",
+                        message: "This project is read-only.",
+                        type: NotificationType.info,
+                      );
+                    }
                   },
                 ),
               );
@@ -1294,12 +1393,14 @@ class _SprintsTabState extends State<SprintsTab> {
           );
         },
       ),
-      floatingActionButton: widget.isLocked ? null : FloatingActionButton(
-        heroTag: "add_sprint_fab",
-        backgroundColor: const Color(0xFF1F2937),
-        onPressed: _showAddSprintDialog,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: widget.isLocked
+          ? null
+          : FloatingActionButton(
+              heroTag: "add_sprint_fab",
+              backgroundColor: const Color(0xFF1F2937),
+              onPressed: _showAddSprintDialog,
+              child: const Icon(Icons.add),
+            ),
     );
   }
 }
