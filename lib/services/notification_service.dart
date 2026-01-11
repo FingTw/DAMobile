@@ -18,10 +18,10 @@ class NotificationService {
     OneSignal.Notifications.requestPermission(true);
 
     var id = OneSignal.User.pushSubscription.id;
-    debugPrint("OneSignal Player ID: $id");
+    debugPrint("OneSignal Player ID: \$id");
 
     OneSignal.User.pushSubscription.addObserver((state) {
-      debugPrint("OneSignal Player ID update: ${state.current.id}");
+      debugPrint("OneSignal Player ID update: \${state.current.id}");
       if (state.current.id != null) {
         syncOneSignalId();
       }
@@ -37,9 +37,35 @@ class NotificationService {
     });
 
     OneSignal.Notifications.addClickListener((event) {
-      debugPrint('NOTIFICATION CLICKED: ${event.notification.additionalData}');
+      debugPrint('NOTIFICATION CLICKED: \${event.notification.additionalData}');
       _handleNotificationClick(event.notification.additionalData);
     });
+  }
+
+  /// Associates the user's email with their OneSignal profile.
+  /// Call this after a user successfully logs in.
+  static Future<void> setEmail(String email) async {
+    if (email.isEmpty) {
+      debugPrint("Email is empty, skipping OneSignal email association.");
+      return;
+    }
+    try {
+      await OneSignal.User.addEmail(email: email);
+      debugPrint("Successfully associated email with OneSignal: \$email");
+    } catch (e) {
+      debugPrint("Error associating email with OneSignal: \$e");
+    }
+  }
+
+  /// Disassociates the user from the OneSignal device record.
+  /// Call this when a user logs out.
+  static Future<void> logout() async {
+    try {
+      await OneSignal.logout();
+      debugPrint("Successfully logged out from OneSignal.");
+    } catch (e) {
+      debugPrint("Error logging out from OneSignal: \$e");
+    }
   }
 
   static Future<void> _handleNotificationClick(Map<String, dynamic>? data) async {
@@ -73,7 +99,7 @@ class NotificationService {
               ),
             );
           } else {
-            debugPrint("Project with ID $projectId not found.");
+            debugPrint("Project with ID \$projectId not found.");
           }
         }
         break;
@@ -93,16 +119,16 @@ class NotificationService {
     if (playerId != null) {
       // ▼▼▼ SỬA ĐOẠN NÀY: Dùng Realtime Database ▼▼▼
       try {
-        DatabaseReference userRef = FirebaseDatabase.instance.ref('users/${user.uid}');
+        DatabaseReference userRef = FirebaseDatabase.instance.ref('users/\${user.uid}');
 
         await userRef.update({
           'oneSignalId': playerId,
           'lastSync': ServerValue.timestamp, // Dùng timestamp của Realtime DB
         });
 
-        debugPrint("Đã đồng bộ OneSignal ID thành công: $playerId");
+        debugPrint("Đã đồng bộ OneSignal ID thành công: \$playerId");
       } catch (e) {
-        debugPrint("Lỗi đồng bộ OneSignal ID: $e");
+        debugPrint("Lỗi đồng bộ OneSignal ID: \$e");
       }
     } else {
       debugPrint("Chưa lấy được OneSignal ID (null)");
