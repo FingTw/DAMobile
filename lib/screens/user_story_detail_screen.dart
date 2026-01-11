@@ -34,6 +34,7 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   late TextEditingController _pointsController;
   late UserStoryStatus _currentStatus;
   late Future<List<UserModel>> _projectMembers;
+  bool _isPO = false;
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -54,6 +55,15 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   Future<List<UserModel>> _getProjectMembers() async {
     final project = await DatabaseService().getProjectById(widget.projectId);
     if (project == null) return [];
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      final role = project.members[currentUser.uid];
+      setState(() {
+        _isPO = role == 'PO' || project.ownerId == currentUser.uid;
+      });
+    }
+
     return DatabaseService().getProjectMembers(project.members.keys.toList());
   }
 
@@ -233,6 +243,22 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                     ),
                   ),
                 ),
+                if (_isPO && _currentStatus == UserStoryStatus.done) ...[
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: () => _updateStatus(
+                      UserStoryStatus.done,
+                    ), // Keep as done but could be 'accepted'
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text("Accept Story"),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 30),
@@ -264,13 +290,44 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            Text(
-              "Tasks",
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Tasks",
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                StreamBuilder<List<ProjectTask>>(
+                  stream: DatabaseService().getProjectTasksByStory(
+                    widget.story.id,
+                  ),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty)
+                      return const SizedBox.shrink();
+                    final tasks = snapshot.data!;
+                    final done = tasks
+                        .where(
+                          (t) =>
+                              t.status == ProjectTaskStatus.done ||
+                              t.status == ProjectTaskStatus.verified,
+                        )
+                        .length;
+                    final progress = tasks.isEmpty ? 0.0 : done / tasks.length;
+                    return Text(
+                      "${(progress * 100).toInt()}% Hoàn thành",
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             StreamBuilder<List<ProjectTask>>(
@@ -298,8 +355,29 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                     ),
                   );
                 }
+                final done = tasks
+                    .where(
+                      (t) =>
+                          t.status == ProjectTaskStatus.done ||
+                          t.status == ProjectTaskStatus.verified,
+                    )
+                    .length;
+                final progress = tasks.isEmpty ? 0.0 : done / tasks.length;
+
                 return Column(
                   children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        backgroundColor: Colors.grey[200],
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.blue,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     ...tasks.map((task) => _buildTaskCard(task)),
                     const SizedBox(height: 10),
                     ElevatedButton.icon(

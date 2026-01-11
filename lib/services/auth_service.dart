@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:untitled3/services/notification_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -26,6 +27,7 @@ class AuthService {
       final User? user = userCredential.user;
 
       if (user != null) {
+        await NotificationService.syncOneSignalId();
         final userRef = FirebaseDatabase.instance.ref('users/${user.uid}');
         final snapshot = await userRef.get();
         if (!snapshot.exists) {
@@ -48,6 +50,7 @@ class AuthService {
   Future<String?> signInWithEmailAndPassword(String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
+      await NotificationService.syncOneSignalId();
       return null; // Success
     } on FirebaseAuthException catch (e) {
       debugPrint("FirebaseAuthException in signInWithEmailAndPassword: ${e.code}");
@@ -66,6 +69,7 @@ class AuthService {
       UserCredential result = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       User? user = result.user;
       if (user != null) {
+        await NotificationService.syncOneSignalId();
         await DatabaseService(uid: user.uid).createNewUser(name, email);
       }
       return null; // Success

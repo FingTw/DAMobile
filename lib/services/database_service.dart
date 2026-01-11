@@ -341,6 +341,39 @@ class DatabaseService {
     await _sprintsRef.child(sprintId).update({'priority': priority});
   }
 
+  Future<void> completeSprint(String projectId, String sprintId) async {
+    // 1. Update sprint status to completed
+    await updateSprintStatus(sprintId, SprintStatus.completed);
+
+    // 2. Get all stories associated with this sprint
+    final stories = await getStoriesForSprint(projectId, sprintId).first;
+
+    for (final story in stories) {
+      // 3. Get all tasks for this story
+      final tasks = await getProjectTasksByStory(story.id).first;
+
+      // 4. Determine if story is "Done" - logic: status is done AND all tasks are done/verified
+      // If no tasks, we rely on story status
+      bool allTasksDone =
+          tasks.isEmpty ||
+          tasks.every(
+            (t) =>
+                t.status == ProjectTaskStatus.done ||
+                t.status == ProjectTaskStatus.verified,
+          );
+
+      bool isStoryDone = story.status == UserStoryStatus.done && allTasksDone;
+
+      if (!isStoryDone) {
+        // 5. Move back to product backlog
+        await _storiesRef.child(story.id).update({
+          'sprintId': '',
+          'status': UserStoryStatus.backlog.toString().split('.').last,
+        });
+      }
+    }
+  }
+
   Stream<List<Sprint>> getSprints(String projectId) {
     return _sprintsRef.orderByChild('projectId').equalTo(projectId).onValue.map(
       (event) {
@@ -715,6 +748,10 @@ class DatabaseService {
         'votedBy': votedBy,
       });
     }
+  }
+
+  Future<void> deleteRetroItem(String itemId) async {
+    await _retroItemsRef.child(itemId).remove();
   }
 
   Future<void> addActionItem(

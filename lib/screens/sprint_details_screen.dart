@@ -96,10 +96,12 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   ) {
     if (oldListIndex == newListIndex && oldItemIndex == newItemIndex) return;
 
+    // Get the task being moved
     final item = contents[oldListIndex].children[oldItemIndex];
     final taskCard = item.child as _ProjectTaskCard;
     final task = taskCard.task;
 
+    // Determine new status based on newListIndex
     ProjectTaskStatus newStatus;
     switch (newListIndex) {
       case 0:
@@ -115,19 +117,27 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
         newStatus = ProjectTaskStatus.verified;
         break;
       default:
-        return;
+        newStatus = ProjectTaskStatus.todo;
     }
 
-    if (task.status != newStatus) {
-      DatabaseService().updateProjectTaskStatus(task.id, newStatus);
-      if (newStatus == ProjectTaskStatus.done) {
-        ToastService.show(
-          title: "Task Completed!",
-          message: "'${task.title}' moved to Done.",
-          type: NotificationType.success,
-        );
-      }
+    if ((newStatus == ProjectTaskStatus.done ||
+            newStatus == ProjectTaskStatus.verified) &&
+        !task.isDoDComplete) {
+      ToastService.show(
+        title: "DoD Incomplete",
+        message:
+            "Please complete the Definition of Done checklist for this task.",
+        type: NotificationType.warning,
+      );
     }
+
+    DatabaseService().updateProjectTaskStatus(task.id, newStatus);
+
+    ToastService.show(
+      title: "Task Updated",
+      message: "Moved to ${newStatus.toString().split('.').last.toUpperCase()}",
+      type: NotificationType.success,
+    );
   }
 
   void _showAddTaskDialog() {
@@ -425,6 +435,47 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
     );
   }
 
+  void _showCompleteSprintDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hoàn thành Sprint?'),
+        content: const Text(
+          'Hành động này sẽ chuyển trạng thái Sprint thành Kết thúc (Completed) và kích hoạt tính năng Retrospective. Bạn không thể hoàn tác.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            onPressed: () async {
+              await DatabaseService().completeSprint(
+                widget.project.id,
+                widget.sprint.id,
+              );
+              if (mounted) {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context); // Back to project details to refresh
+                ToastService.show(
+                  title: "Thành công",
+                  message:
+                      "Sprint đã hoàn thành và Task tồn đọng đã về Backlog!",
+                  type: NotificationType.success,
+                );
+              }
+            },
+            child: const Text(
+              'Hoàn thành',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -462,7 +513,7 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          if (widget.sprint.status == SprintStatus.inProgress)
+          if (widget.sprint.status == SprintStatus.inProgress) ...[
             IconButton(
               icon: const Icon(Icons.today, color: Color(0xFF10B981)),
               tooltip: 'Daily Standup',
@@ -482,6 +533,12 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                 }
               },
             ),
+            IconButton(
+              icon: const Icon(Icons.check_circle_outline, color: Colors.blue),
+              tooltip: 'Hoàn thành Sprint',
+              onPressed: _showCompleteSprintDialog,
+            ),
+          ],
           if (widget.sprint.status == SprintStatus.completed)
             IconButton(
               icon: const Icon(Icons.feedback, color: Color(0xFF8B5CF6)),
@@ -628,17 +685,18 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                     // Disable drag and drop - chỉ xem
                     return DragAndDropLists(
                       children: contents,
-                      onItemReorder:
-                          (
-                            int oldItemIndex,
-                            int oldListIndex,
-                            int newItemIndex,
-                            int newListIndex,
-                          ) {
-                            // Do nothing to disable reordering
-                          },
+                      onItemReorder: (oldItem, oldList, newItem, newList) {
+                        _onProjectTaskReorder(
+                          oldItem,
+                          oldList,
+                          newItem,
+                          newList,
+                          contents,
+                          tasks,
+                        );
+                      },
                       onListReorder: (int oldListIndex, int newListIndex) {
-                        // Do nothing to disable reordering
+                        // Normally we don't reorder Scrum columns
                       },
                       listPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -789,7 +847,7 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           orElse: () => UserModel(uid: '', name: 'Unassigned', email: ''),
         );
         return DragAndDropItem(
-          canDrag: false, // Disable drag - chỉ xem
+          canDrag: true, // Re-enabled drag
           child: _ProjectTaskCard(
             task: task,
             assignee: assignee,

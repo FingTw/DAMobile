@@ -223,18 +223,17 @@ class _TaskScreenState extends State<TaskScreen> {
 
           final List<tm.Task> tasks = snapshot.data!;
 
-          final todoTasks = tasks
-              .where((t) => t.status == tm.TaskStatus.todo)
-              .toList();
           final inProgressTasks = tasks
-              .where((t) => t.status == tm.TaskStatus.inProgress)
+              .where((t) =>
+                  t.status == tm.TaskStatus.inProgress ||
+                  t.status == tm.TaskStatus.todo)
               .toList();
           final doneTasks = tasks
               .where((t) => t.status == tm.TaskStatus.done)
               .toList();
 
           return DefaultTabController(
-            length: 3,
+            length: 2,
             child: Column(
               children: [
                 Padding(
@@ -259,21 +258,13 @@ class _TaskScreenState extends State<TaskScreen> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.purple.withValues(alpha: 0.3),
+                            color: Colors.purple.withOpacity(0.3),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
                         ],
                       ),
                       tabs: [
-                        Tab(
-                          child: Text(
-                            "To Do",
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
                         Tab(
                           child: Text(
                             "In Progress",
@@ -297,11 +288,6 @@ class _TaskScreenState extends State<TaskScreen> {
                 Expanded(
                   child: TabBarView(
                     children: [
-                      _buildTaskList(
-                        todoTasks,
-                        "No tasks to do.",
-                        _uploadEvidence,
-                      ),
                       _buildTaskList(
                         inProgressTasks,
                         "No tasks in progress.",
@@ -453,7 +439,7 @@ class _TaskListItem extends StatelessWidget {
       elevation: 4,
       margin: const EdgeInsets.only(bottom: 16),
       color: Colors.white,
-      shadowColor: Colors.black.withValues(alpha: 0.1),
+      shadowColor: Colors.black.withOpacity(0.1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: InkWell(
         borderRadius: BorderRadius.circular(15),
