@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:untitled3/models/project_model.dart';
-import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/data/repositories/project_repository.dart';
+import 'package:untitled3/providers/project_provider.dart';
 import 'package:untitled3/screens/project_details_screen.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
@@ -39,7 +41,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "Tạo không gian", // Create Workspace
+                        "Tạo không gian",
                         style: GoogleFonts.inter(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
@@ -51,7 +53,9 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         controller: nameController,
                         decoration: InputDecoration(
                           labelText: 'Tên không gian *',
-                          labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
+                          labelStyle: GoogleFonts.inter(
+                            color: Colors.grey[600],
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -74,7 +78,9 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         controller: descController,
                         decoration: InputDecoration(
                           labelText: 'Mô tả (Tùy chọn)',
-                          labelStyle: GoogleFonts.inter(color: Colors.grey[600]),
+                          labelStyle: GoogleFonts.inter(
+                            color: Colors.grey[600],
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -89,7 +95,10 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                       ),
                       const SizedBox(height: 16),
                       TextButton.icon(
-                        icon: const Icon(Icons.calendar_today, color: Colors.blue),
+                        icon: const Icon(
+                          Icons.calendar_today,
+                          color: Colors.blue,
+                        ),
                         label: Text(
                           selectedDeadline == null
                               ? 'Chọn thời hạn (Tùy chọn)'
@@ -127,7 +136,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                           const SizedBox(width: 8),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue, // Solid color for clarity
+                              backgroundColor: Colors.blue,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -136,35 +145,37 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                               if (nameController.text.isNotEmpty) {
                                 final user = FirebaseAuth.instance.currentUser;
                                 if (user != null) {
-                                  DatabaseService(uid: user.uid)
+                                  ProjectRepository(uid: user.uid)
                                       .createProject(
-                                    nameController.text,
-                                    descController.text,
-                                    10, // Default max members
-                                    selectedDeadline,
-                                  )
+                                        nameController.text,
+                                        descController.text,
+                                        10,
+                                        selectedDeadline,
+                                      )
                                       .then((_) {
-                                    if (mounted && context.mounted) {
-                                      Navigator.of(context).pop(); // Close dialog on success
-                                    }
-                                    ToastService.show(
-                                      title: "Thành công",
-                                      message:
-                                          "Đã tạo không gian '${nameController.text}'",
-                                      type: NotificationType.success,
-                                    );
-                                  }).catchError((error) {
-                                    ToastService.show(
-                                      title: "Thất bại",
-                                      message: "Lỗi: $error",
-                                      type: NotificationType.error,
-                                    );
-                                  });
+                                        if (mounted && context.mounted) {
+                                          Navigator.of(context).pop();
+                                        }
+                                        ToastService.show(
+                                          title: "Thành công",
+                                          message:
+                                              "Đã tạo không gian '${nameController.text}'",
+                                          type: NotificationType.success,
+                                        );
+                                      })
+                                      .catchError((error) {
+                                        ToastService.show(
+                                          title: "Thất bại",
+                                          message: "Lỗi: $error",
+                                          type: NotificationType.error,
+                                        );
+                                      });
                                 }
                               } else {
                                 ToastService.show(
                                   title: "Thiếu thông tin",
-                                  message: "Vui lòng nhập tên không gian làm việc",
+                                  message:
+                                      "Vui lòng nhập tên không gian làm việc",
                                   type: NotificationType.warning,
                                 );
                               }
@@ -254,7 +265,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                       onPressed: () async {
                         if (codeController.text.isNotEmpty) {
                           final navigator = Navigator.of(context);
-                          String res = await DatabaseService(
+                          String res = await ProjectRepository(
                             uid: FirebaseAuth.instance.currentUser?.uid,
                           ).joinProjectByCode(codeController.text);
                           if (mounted && context.mounted) {
@@ -269,7 +280,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                           } else {
                             ToastService.show(
                               title: "Thất bại",
-                              message: res, // Show the error message from the service
+                              message: res,
                               type: NotificationType.error,
                             );
                           }
@@ -297,9 +308,11 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Please log in."));
+    
+    final projectProvider = Provider.of<ProjectProvider>(context);
 
     return Scaffold(
-      backgroundColor: Colors.white, // Clean white background
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           "Không gian",
@@ -332,137 +345,137 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<Project>>(
-        stream: DatabaseService(uid: user.uid).getProjects(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: projectProvider.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildProjectList(projectProvider.projects),
+    );
+  }
 
-          final projects = snapshot.data ?? [];
+  Widget _buildProjectList(List<Project> projects) {
+    if (projects.isEmpty) {
+      return Center(
+        child: Text(
+          "No projects yet. Create or join one!",
+          style: GoogleFonts.inter(color: Colors.grey),
+        ),
+      );
+    }
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFF3F4F6,
-                    ), // Light grey input background
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: "Tìm kiếm không gian",
-                      hintStyle: GoogleFonts.inter(color: Colors.grey[500]),
-                      prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: "Tìm kiếm không gian",
+                hintStyle: GoogleFonts.inter(color: Colors.grey[500]),
+                prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          child: Text(
+            "Đã xem gần đây",
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF374151),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: projects.length,
+            separatorBuilder: (c, i) =>
+                const Divider(height: 1, color: Color(0xFFF3F4F6)),
+            itemBuilder: (context, index) {
+              final project = projects[index];
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ProjectDetailsScreen(project: project),
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Text(
-                  "Đã xem gần đây",
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF374151),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: projects.length,
-                  separatorBuilder: (c, i) =>
-                      const Divider(height: 1, color: Color(0xFFF3F4F6)),
-                  itemBuilder: (context, index) {
-                    final project = projects[index];
-                    return InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                ProjectDetailsScreen(project: project),
-                          ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Row(
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _getProjectColor(index),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Center(child: _getProjectIcon(index)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: _getProjectColor(
-                                  index,
-                                ), // Random or deterministic neutral/pastel color
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Center(child: _getProjectIcon(index)),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    project.name,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.normal,
-                                      color: const Color(0xFF1F2937),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    project.description.isEmpty
-                                        ? "SCRUM board"
-                                        : project.description,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
+                            Text(
+                              project.name,
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.normal,
+                                color: const Color(0xFF1F2937),
                               ),
                             ),
-                            Icon(Icons.star_border, color: Colors.grey[400]),
+                            const SizedBox(height: 4),
+                            Text(
+                              project.description.isEmpty
+                                  ? "SCRUM board"
+                                  : project.description,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: Colors.grey[500],
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    );
-                  },
+                      Icon(Icons.star_border, color: Colors.grey[400]),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
-      ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
   Color _getProjectColor(int index) {
     final colors = [
-      const Color(0xFFE0F2F1), // Teal 50
-      const Color(0xFFFFEBEE), // Red 50
-      const Color(0xFFE3F2FD), // Blue 50
-      const Color(0xFFF3E5F5), // Purple 50
-      const Color(0xFFFFF3E0), // Orange 50
+      const Color(0xFFE0F2F1),
+      const Color(0xFFFFEBEE),
+      const Color(0xFFE3F2FD),
+      const Color(0xFFF3E5F5),
+      const Color(0xFFFFF3E0),
     ];
     return colors[index % colors.length];
   }

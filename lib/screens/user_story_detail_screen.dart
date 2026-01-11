@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/models/project_task_model.dart';
 import 'package:untitled3/models/user_model.dart';
+import 'package:untitled3/models/definition_of_done_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/services/toast_service.dart';
 import 'package:untitled3/widgets/custom_notification_widget.dart';
@@ -33,14 +34,19 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   late TextEditingController _pointsController;
   late UserStoryStatus _currentStatus;
   late Future<List<UserModel>> _projectMembers;
+  bool _isPO = false;
   final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.story.title);
-    _descriptionController = TextEditingController(text: widget.story.description);
-    _pointsController = TextEditingController(text: widget.story.points.toString());
+    _descriptionController = TextEditingController(
+      text: widget.story.description,
+    );
+    _pointsController = TextEditingController(
+      text: widget.story.points.toString(),
+    );
     _currentStatus = widget.story.status;
     // Get project members for task assignment
     _projectMembers = _getProjectMembers();
@@ -49,6 +55,15 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   Future<List<UserModel>> _getProjectMembers() async {
     final project = await DatabaseService().getProjectById(widget.projectId);
     if (project == null) return [];
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      final role = project.members[currentUser.uid];
+      setState(() {
+        _isPO = role == 'PO' || project.ownerId == currentUser.uid;
+      });
+    }
+
     return DatabaseService().getProjectMembers(project.members.keys.toList());
   }
 
@@ -71,9 +86,10 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
     });
     Navigator.pop(context);
     ToastService.show(
-        title: "Status Updated",
-        message: "Story status changed to ${newStatus.name}.",
-        type: NotificationType.info);
+      title: "Status Updated",
+      message: "Story status changed to ${newStatus.name}.",
+      type: NotificationType.info,
+    );
   }
 
   void _showStatusMenu() {
@@ -91,7 +107,10 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
             children: [
               Text(
                 "Change Status",
-                style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold),
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 10),
               ...UserStoryStatus.values.map((status) {
@@ -172,7 +191,10 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(8),
@@ -201,11 +223,16 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                 GestureDetector(
                   onTap: _showStatusMenu,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.blue.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Text(
                       _currentStatus.name.toUpperCase(),
@@ -216,6 +243,22 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                     ),
                   ),
                 ),
+                if (_isPO && _currentStatus == UserStoryStatus.done) ...[
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: () => _updateStatus(
+                      UserStoryStatus.done,
+                    ), // Keep as done but could be 'accepted'
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text("Accept Story"),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 30),
@@ -247,13 +290,44 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            Text(
-              "Tasks",
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Tasks",
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                StreamBuilder<List<ProjectTask>>(
+                  stream: DatabaseService().getProjectTasksByStory(
+                    widget.story.id,
+                  ),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty)
+                      return const SizedBox.shrink();
+                    final tasks = snapshot.data!;
+                    final done = tasks
+                        .where(
+                          (t) =>
+                              t.status == ProjectTaskStatus.done ||
+                              t.status == ProjectTaskStatus.verified,
+                        )
+                        .length;
+                    final progress = tasks.isEmpty ? 0.0 : done / tasks.length;
+                    return Text(
+                      "${(progress * 100).toInt()}% Hoàn thành",
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             StreamBuilder<List<ProjectTask>>(
@@ -281,8 +355,29 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                     ),
                   );
                 }
+                final done = tasks
+                    .where(
+                      (t) =>
+                          t.status == ProjectTaskStatus.done ||
+                          t.status == ProjectTaskStatus.verified,
+                    )
+                    .length;
+                final progress = tasks.isEmpty ? 0.0 : done / tasks.length;
+
                 return Column(
                   children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        backgroundColor: Colors.grey[200],
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.blue,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     ...tasks.map((task) => _buildTaskCard(task)),
                     const SizedBox(height: 10),
                     ElevatedButton.icon(
@@ -369,15 +464,21 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: (v) => setState(() => selectedAssigneeId = v),
+                          onChanged: (v) =>
+                              setState(() => selectedAssigneeId = v),
                         ),
                         const SizedBox(height: 16),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(selectedStartDate == null
-                              ? "Chọn thời gian bắt đầu *"
-                              : "Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedStartDate!)}"),
-                          trailing: const Icon(Icons.play_circle_outline, color: Colors.green),
+                          title: Text(
+                            selectedStartDate == null
+                                ? "Chọn thời gian bắt đầu *"
+                                : "Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedStartDate!)}",
+                          ),
+                          trailing: const Icon(
+                            Icons.play_circle_outline,
+                            color: Colors.green,
+                          ),
                           onTap: () async {
                             final date = await showDatePicker(
                               context: context,
@@ -409,16 +510,24 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                             padding: const EdgeInsets.only(top: 8.0),
                             child: Text(
                               "Vui lòng chọn thời gian bắt đầu",
-                              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                              style: GoogleFonts.inter(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         const SizedBox(height: 16),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(selectedDueDate == null
-                              ? "Chọn hạn chót *"
-                              : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDueDate!)}"),
-                          trailing: const Icon(Icons.calendar_today, color: Colors.blue),
+                          title: Text(
+                            selectedDueDate == null
+                                ? "Chọn hạn chót *"
+                                : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDueDate!)}",
+                          ),
+                          trailing: const Icon(
+                            Icons.calendar_today,
+                            color: Colors.blue,
+                          ),
                           onTap: () async {
                             final date = await showDatePicker(
                               context: context,
@@ -450,15 +559,23 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                             padding: const EdgeInsets.only(top: 8.0),
                             child: Text(
                               "Vui lòng chọn hạn chót",
-                              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                              style: GoogleFonts.inter(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
-                        if (selectedStartDate != null && selectedDueDate != null && selectedDueDate!.isBefore(selectedStartDate!))
+                        if (selectedStartDate != null &&
+                            selectedDueDate != null &&
+                            selectedDueDate!.isBefore(selectedStartDate!))
                           Padding(
                             padding: const EdgeInsets.only(top: 8.0),
                             child: Text(
                               "Hạn chót phải sau thời gian bắt đầu",
-                              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                              style: GoogleFonts.inter(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         const SizedBox(height: 24),
@@ -470,9 +587,12 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                                   selectedAssigneeId != null &&
                                   selectedStartDate != null &&
                                   selectedDueDate != null &&
-                                  selectedDueDate!.isAfter(selectedStartDate!)) {
+                                  selectedDueDate!.isAfter(
+                                    selectedStartDate!,
+                                  )) {
                                 // Get sprint ID from story
-                                final sprintId = widget.story.sprintId.isNotEmpty
+                                final sprintId =
+                                    widget.story.sprintId.isNotEmpty
                                     ? widget.story.sprintId
                                     : '';
                                 DatabaseService().addProjectTask(
@@ -493,7 +613,8 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                               } else {
                                 ToastService.show(
                                   title: "Missing Information",
-                                  message: "Please fill in all required fields correctly",
+                                  message:
+                                      "Please fill in all required fields correctly",
                                   type: NotificationType.warning,
                                 );
                               }
@@ -517,7 +638,9 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
   Widget _buildTaskCard(ProjectTask task) {
     return FutureBuilder<UserModel?>(
       future: task.assigneeId.isNotEmpty
-          ? DatabaseService().getProjectMembers([task.assigneeId]).then((list) => list.isNotEmpty ? list.first : null)
+          ? DatabaseService()
+                .getProjectMembers([task.assigneeId])
+                .then((list) => list.isNotEmpty ? list.first : null)
           : Future.value(null),
       builder: (context, assigneeSnapshot) {
         final assignee = assigneeSnapshot.data;
@@ -526,7 +649,9 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(
-              color: task.isOverdue ? Colors.red.shade300 : Colors.grey.shade200,
+              color: task.isOverdue
+                  ? Colors.red.shade300
+                  : Colors.grey.shade200,
               width: task.isOverdue ? 1.5 : 1,
             ),
           ),
@@ -553,14 +678,18 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                     PopupMenuButton<ProjectTaskStatus>(
                       icon: const Icon(Icons.more_vert, size: 18),
                       onSelected: (status) {
-                        DatabaseService().updateProjectTaskStatus(task.id, status);
-                      },
-                      itemBuilder: (context) => ProjectTaskStatus.values.map((status) {
-                        return PopupMenuItem(
-                          value: status,
-                          child: Text(status.toString().split('.').last),
+                        DatabaseService().updateProjectTaskStatus(
+                          task.id,
+                          status,
                         );
-                      }).toList(),
+                      },
+                      itemBuilder: (context) =>
+                          ProjectTaskStatus.values.map((status) {
+                            return PopupMenuItem(
+                              value: status,
+                              child: Text(status.toString().split('.').last),
+                            );
+                          }).toList(),
                     ),
                   ],
                 ),
@@ -575,12 +704,19 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                           color: Colors.blue.shade50,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Icon(Icons.person, size: 14, color: Colors.blue.shade700),
+                        child: Icon(
+                          Icons.person,
+                          size: 14,
+                          color: Colors.blue.shade700,
+                        ),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         "Người thực hiện: ${assignee.name}",
-                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[700]),
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                        ),
                       ),
                     ],
                   ),
@@ -595,12 +731,19 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                           color: Colors.green.shade50,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Icon(Icons.play_circle_outline, size: 14, color: Colors.green.shade700),
+                        child: Icon(
+                          Icons.play_circle_outline,
+                          size: 14,
+                          color: Colors.green.shade700,
+                        ),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         'Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(task.startDate!)}',
-                        style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[600]),
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                        ),
                       ),
                     ],
                   ),
@@ -614,13 +757,17 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: task.isOverdue ? Colors.red.shade50 : Colors.orange.shade50,
+                          color: task.isOverdue
+                              ? Colors.red.shade50
+                              : Colors.orange.shade50,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Icon(
                           Icons.access_time,
                           size: 14,
-                          color: task.isOverdue ? Colors.red.shade700 : Colors.orange.shade700,
+                          color: task.isOverdue
+                              ? Colors.red.shade700
+                              : Colors.orange.shade700,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -647,7 +794,8 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                   ),
                 ],
                 // Evidence Image
-                if (task.status == ProjectTaskStatus.done && task.evidenceLink.isNotEmpty) ...[
+                if (task.status == ProjectTaskStatus.done &&
+                    task.evidenceLink.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Container(
                     decoration: BoxDecoration(
@@ -669,11 +817,18 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.broken_image, size: 30, color: Colors.grey[600]),
+                                Icon(
+                                  Icons.broken_image,
+                                  size: 30,
+                                  color: Colors.grey[600],
+                                ),
                                 const SizedBox(height: 4),
                                 Text(
                                   'Không thể tải ảnh',
-                                  style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[600]),
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    color: Colors.grey[600],
+                                  ),
                                 ),
                               ],
                             ),
@@ -687,8 +842,10 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                             color: Colors.grey[200],
                             child: Center(
                               child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
                                     : null,
                               ),
                             ),
@@ -698,8 +855,159 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
                     ),
                   ),
                 ],
+                // Definition of Done Checklist
+                StreamBuilder<DefinitionOfDone?>(
+                  stream: DatabaseService().getDefinitionOfDone(
+                    widget.projectId,
+                  ),
+                  builder: (context, dodSnapshot) {
+                    if (!dodSnapshot.hasData ||
+                        dodSnapshot.data == null ||
+                        dodSnapshot.data!.items.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
+                    final dod = dodSnapshot.data!;
+                    final checklist = task.dodChecklist;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Definition of Done',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: const Color(0xFF1F2937),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: task.isDoDComplete
+                                    ? Colors.green[100]
+                                    : Colors.orange[100],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${task.dodCompletedCount}/${task.dodTotalCount}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: task.isDoDComplete
+                                      ? Colors.green[700]
+                                      : Colors.orange[700],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: task.dodProgress,
+                          backgroundColor: Colors.grey[200],
+                          valueColor: AlwaysStoppedAnimation(
+                            task.isDoDComplete ? Colors.green : Colors.orange,
+                          ),
+                          minHeight: 4,
+                        ),
+                        const SizedBox(height: 12),
+                        ...dod.items.map((item) {
+                          final isChecked =
+                              checklist[item.description] ?? false;
+
+                          return InkWell(
+                            onTap: () async {
+                              final newChecklist = Map<String, bool>.from(
+                                checklist,
+                              );
+                              newChecklist[item.description] = !isChecked;
+
+                              await DatabaseService().updateTaskDoDChecklist(
+                                task.id,
+                                newChecklist,
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      color: isChecked
+                                          ? const Color(0xFF10B981)
+                                          : Colors.white,
+                                      border: Border.all(
+                                        color: isChecked
+                                            ? const Color(0xFF10B981)
+                                            : Colors.grey[400]!,
+                                        width: 2,
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: isChecked
+                                        ? const Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: Colors.white,
+                                          )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      item.description,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        color: isChecked
+                                            ? Colors.grey[600]
+                                            : const Color(0xFF1F2937),
+                                        decoration: isChecked
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                  if (item.isMandatory)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange[100],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'Required',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange[700],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                ),
                 // Upload evidence button
-                if (task.status == ProjectTaskStatus.done && task.evidenceLink.isEmpty) ...[
+                if (task.status == ProjectTaskStatus.done &&
+                    task.evidenceLink.isEmpty) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -725,16 +1033,23 @@ class _UserStoryDetailScreenState extends State<UserStoryDetailScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
     if (pickedFile == null) return;
 
     try {
       final ref = FirebaseStorage.instance.ref('task_evidence/${task.id}.jpg');
       await ref.putFile(File(pickedFile.path));
       final downloadUrl = await ref.getDownloadURL();
-      
-      await DatabaseService().updateProjectTaskEvidence(task.id, downloadUrl, '');
-      
+
+      await DatabaseService().updateProjectTaskEvidence(
+        task.id,
+        downloadUrl,
+        '',
+      );
+
       if (mounted) {
         ToastService.show(
           title: "Evidence Uploaded",

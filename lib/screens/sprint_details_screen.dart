@@ -7,6 +7,8 @@ import 'package:untitled3/models/sprint_model.dart';
 import 'package:untitled3/models/user_story_model.dart';
 import 'package:untitled3/models/project_task_model.dart';
 import 'package:untitled3/screens/user_story_detail_screen.dart';
+import 'package:untitled3/screens/retrospective_screen.dart';
+import 'package:untitled3/screens/daily_standup_screen.dart';
 import 'package:untitled3/models/user_model.dart';
 import 'package:untitled3/services/database_service.dart';
 import 'package:untitled3/services/toast_service.dart';
@@ -94,10 +96,12 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   ) {
     if (oldListIndex == newListIndex && oldItemIndex == newItemIndex) return;
 
+    // Get the task being moved
     final item = contents[oldListIndex].children[oldItemIndex];
     final taskCard = item.child as _ProjectTaskCard;
     final task = taskCard.task;
 
+    // Determine new status based on newListIndex
     ProjectTaskStatus newStatus;
     switch (newListIndex) {
       case 0:
@@ -113,19 +117,27 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
         newStatus = ProjectTaskStatus.verified;
         break;
       default:
-        return;
+        newStatus = ProjectTaskStatus.todo;
     }
 
-    if (task.status != newStatus) {
-      DatabaseService().updateProjectTaskStatus(task.id, newStatus);
-      if (newStatus == ProjectTaskStatus.done) {
-        ToastService.show(
-          title: "Task Completed!",
-          message: "'${task.title}' moved to Done.",
-          type: NotificationType.success,
-        );
-      }
+    if ((newStatus == ProjectTaskStatus.done ||
+            newStatus == ProjectTaskStatus.verified) &&
+        !task.isDoDComplete) {
+      ToastService.show(
+        title: "DoD Incomplete",
+        message:
+            "Please complete the Definition of Done checklist for this task.",
+        type: NotificationType.warning,
+      );
     }
+
+    DatabaseService().updateProjectTaskStatus(task.id, newStatus);
+
+    ToastService.show(
+      title: "Task Updated",
+      message: "Moved to ${newStatus.toString().split('.').last.toUpperCase()}",
+      type: NotificationType.success,
+    );
   }
 
   void _showAddTaskDialog() {
@@ -205,7 +217,8 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (v) => setState(() => selectedStoryId = v),
+                              onChanged: (v) =>
+                                  setState(() => selectedStoryId = v),
                             ),
                             const SizedBox(height: 16),
                             TextField(
@@ -234,15 +247,21 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (v) => setState(() => selectedAssigneeId = v),
+                              onChanged: (v) =>
+                                  setState(() => selectedAssigneeId = v),
                             ),
                             const SizedBox(height: 16),
                             ListTile(
                               contentPadding: EdgeInsets.zero,
-                              title: Text(selectedStartDate == null
-                                  ? "Chọn thời gian bắt đầu *"
-                                  : "Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedStartDate!)}"),
-                              trailing: const Icon(Icons.play_circle_outline, color: Colors.green),
+                              title: Text(
+                                selectedStartDate == null
+                                    ? "Chọn thời gian bắt đầu *"
+                                    : "Bắt đầu: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedStartDate!)}",
+                              ),
+                              trailing: const Icon(
+                                Icons.play_circle_outline,
+                                color: Colors.green,
+                              ),
                               onTap: () async {
                                 final date = await showDatePicker(
                                   context: context,
@@ -274,21 +293,31 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                 padding: const EdgeInsets.only(top: 8.0),
                                 child: Text(
                                   "Vui lòng chọn thời gian bắt đầu",
-                                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                                  style: GoogleFonts.inter(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
                             const SizedBox(height: 16),
                             ListTile(
                               contentPadding: EdgeInsets.zero,
-                              title: Text(selectedDueDate == null
-                                  ? "Chọn hạn chót *"
-                                  : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDueDate!)}"),
-                              trailing: const Icon(Icons.calendar_today, color: Colors.blue),
+                              title: Text(
+                                selectedDueDate == null
+                                    ? "Chọn hạn chót *"
+                                    : "Hạn: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDueDate!)}",
+                              ),
+                              trailing: const Icon(
+                                Icons.calendar_today,
+                                color: Colors.blue,
+                              ),
                               onTap: () async {
                                 final date = await showDatePicker(
                                   context: context,
-                                  initialDate: selectedStartDate ?? DateTime.now(),
-                                  firstDate: selectedStartDate ?? DateTime.now(),
+                                  initialDate:
+                                      selectedStartDate ?? DateTime.now(),
+                                  firstDate:
+                                      selectedStartDate ?? DateTime.now(),
                                   lastDate: DateTime(2030),
                                 );
                                 if (date != null) {
@@ -315,15 +344,23 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                 padding: const EdgeInsets.only(top: 8.0),
                                 child: Text(
                                   "Vui lòng chọn hạn chót",
-                                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                                  style: GoogleFonts.inter(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
-                            if (selectedStartDate != null && selectedDueDate != null && selectedDueDate!.isBefore(selectedStartDate!))
+                            if (selectedStartDate != null &&
+                                selectedDueDate != null &&
+                                selectedDueDate!.isBefore(selectedStartDate!))
                               Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
                                 child: Text(
                                   "Hạn chót phải sau thời gian bắt đầu",
-                                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                                  style: GoogleFonts.inter(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
                             const SizedBox(height: 24),
@@ -332,7 +369,9 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blueAccent,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -343,7 +382,9 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                       selectedAssigneeId != null &&
                                       selectedStartDate != null &&
                                       selectedDueDate != null &&
-                                      selectedDueDate!.isAfter(selectedStartDate!)) {
+                                      selectedDueDate!.isAfter(
+                                        selectedStartDate!,
+                                      )) {
                                     final navigator = Navigator.of(context);
                                     DatabaseService().addProjectTask(
                                       widget.project.id,
@@ -357,13 +398,15 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
                                     navigator.pop();
                                     ToastService.show(
                                       title: "Task Created",
-                                      message: "New task added to the current sprint.",
+                                      message:
+                                          "New task added to the current sprint.",
                                       type: NotificationType.success,
                                     );
                                   } else {
                                     ToastService.show(
                                       title: "Missing Information",
-                                      message: "Please fill in all required fields correctly",
+                                      message:
+                                          "Please fill in all required fields correctly",
                                       type: NotificationType.warning,
                                     );
                                   }
@@ -389,6 +432,47 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showCompleteSprintDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hoàn thành Sprint?'),
+        content: const Text(
+          'Hành động này sẽ chuyển trạng thái Sprint thành Kết thúc (Completed) và kích hoạt tính năng Retrospective. Bạn không thể hoàn tác.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            onPressed: () async {
+              await DatabaseService().completeSprint(
+                widget.project.id,
+                widget.sprint.id,
+              );
+              if (mounted) {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context); // Back to project details to refresh
+                ToastService.show(
+                  title: "Thành công",
+                  message:
+                      "Sprint đã hoàn thành và Task tồn đọng đã về Backlog!",
+                  type: NotificationType.success,
+                );
+              }
+            },
+            child: const Text(
+              'Hoàn thành',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -429,13 +513,60 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          if (widget.sprint.status == SprintStatus.inProgress) ...[
+            IconButton(
+              icon: const Icon(Icons.today, color: Color(0xFF10B981)),
+              tooltip: 'Daily Standup',
+              onPressed: () async {
+                final members = await _projectMembers;
+                if (mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DailyStandupScreen(
+                        sprint: widget.sprint,
+                        projectId: widget.project.id,
+                        members: members,
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.check_circle_outline, color: Colors.blue),
+              tooltip: 'Hoàn thành Sprint',
+              onPressed: _showCompleteSprintDialog,
+            ),
+          ],
+          if (widget.sprint.status == SprintStatus.completed)
+            IconButton(
+              icon: const Icon(Icons.feedback, color: Color(0xFF8B5CF6)),
+              tooltip: 'Retrospective',
+              onPressed: () async {
+                final members = await _projectMembers;
+                if (mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RetrospectiveScreen(
+                        sprint: widget.sprint,
+                        projectId: widget.project.id,
+                        members: members,
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.info_outline, color: Colors.black),
             tooltip: 'Chế độ xem - Không thể chỉnh sửa',
             onPressed: () {
               ToastService.show(
                 title: "Chế độ xem",
-                message: "Bạn đang ở chế độ xem. Vui lòng vào User Story để chỉnh sửa task.",
+                message:
+                    "Bạn đang ở chế độ xem. Vui lòng vào User Story để chỉnh sửa task.",
                 type: NotificationType.info,
               );
             },
@@ -450,71 +581,143 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           }
           final members = membersSnapshot.data!;
 
-          return StreamBuilder<List<ProjectTask>>(
-            stream: DatabaseService().getProjectTasks(widget.sprint.id),
-            builder: (context, taskSnapshot) {
-              if (taskSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final tasks = taskSnapshot.data ?? [];
+          return Column(
+            children: [
+              // Sprint Goal Banner
+              if (widget.sprint.goal.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF2563EB),
+                        const Color(0xFF3B82F6),
+                      ],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.flag, color: Colors.white, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Sprint Goal',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.sprint.goal,
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (widget.sprint.goalDescription.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.sprint.goalDescription,
+                          style: GoogleFonts.inter(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
 
-              List<DragAndDropList> contents = [
-                _buildTaskList(
-                  "TO DO",
-                  tasks
-                      .where((t) => t.status == ProjectTaskStatus.todo)
-                      .toList(),
-                  members,
-                ),
-                _buildTaskList(
-                  "IN PROGRESS",
-                  tasks
-                      .where((t) => t.status == ProjectTaskStatus.inProgress)
-                      .toList(),
-                  members,
-                ),
-                _buildTaskList(
-                  "DONE",
-                  tasks
-                      .where((t) => t.status == ProjectTaskStatus.done)
-                      .toList(),
-                  members,
-                ),
-                _buildTaskList(
-                  "VERIFIED",
-                  tasks
-                      .where((t) => t.status == ProjectTaskStatus.verified)
-                      .toList(),
-                  members,
-                ),
-              ];
+              // Existing StreamBuilder
+              Expanded(
+                child: StreamBuilder<List<ProjectTask>>(
+                  stream: DatabaseService().getProjectTasks(widget.sprint.id),
+                  builder: (context, taskSnapshot) {
+                    if (taskSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final tasks = taskSnapshot.data ?? [];
 
-              // Disable drag and drop - chỉ xem
-              return DragAndDropLists(
-                children: contents,
-                onItemReorder: (int oldItemIndex, int oldListIndex, int newItemIndex, int newListIndex) {
-                  // Do nothing to disable reordering
-                },
-                onListReorder: (int oldListIndex, int newListIndex) {
-                  // Do nothing to disable reordering
-                },
-                listPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                    List<DragAndDropList> contents = [
+                      _buildTaskList(
+                        "TO DO",
+                        tasks
+                            .where((t) => t.status == ProjectTaskStatus.todo)
+                            .toList(),
+                        members,
+                      ),
+                      _buildTaskList(
+                        "IN PROGRESS",
+                        tasks
+                            .where(
+                              (t) => t.status == ProjectTaskStatus.inProgress,
+                            )
+                            .toList(),
+                        members,
+                      ),
+                      _buildTaskList(
+                        "DONE",
+                        tasks
+                            .where((t) => t.status == ProjectTaskStatus.done)
+                            .toList(),
+                        members,
+                      ),
+                      _buildTaskList(
+                        "VERIFIED",
+                        tasks
+                            .where(
+                              (t) => t.status == ProjectTaskStatus.verified,
+                            )
+                            .toList(),
+                        members,
+                      ),
+                    ];
+
+                    // Disable drag and drop - chỉ xem
+                    return DragAndDropLists(
+                      children: contents,
+                      onItemReorder: (oldItem, oldList, newItem, newList) {
+                        _onProjectTaskReorder(
+                          oldItem,
+                          oldList,
+                          newItem,
+                          newList,
+                          contents,
+                          tasks,
+                        );
+                      },
+                      onListReorder: (int oldListIndex, int newListIndex) {
+                        // Normally we don't reorder Scrum columns
+                      },
+                      listPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      listDecoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      listInnerDecoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      axis: Axis.horizontal,
+                      listWidth: 300,
+                    );
+                  },
                 ),
-                listDecoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                listInnerDecoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                axis: Axis.horizontal,
-                listWidth: 300,
-              );
-            },
+              ),
+            ],
           );
         },
       ),
@@ -570,7 +773,7 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
   ) {
     Color headerColor;
     IconData headerIcon;
-    
+
     switch (header) {
       case "TO DO":
         headerColor = Colors.grey.shade600;
@@ -644,7 +847,7 @@ class _SprintDetailsScreenState extends State<SprintDetailsScreen> {
           orElse: () => UserModel(uid: '', name: 'Unassigned', email: ''),
         );
         return DragAndDropItem(
-          canDrag: false, // Disable drag - chỉ xem
+          canDrag: true, // Re-enabled drag
           child: _ProjectTaskCard(
             task: task,
             assignee: assignee,
@@ -663,7 +866,11 @@ class _ProjectTaskCard extends StatelessWidget {
   final ProjectTask task;
   final UserModel assignee;
   final VoidCallback onTap;
-  const _ProjectTaskCard({required this.task, required this.assignee, required this.onTap});
+  const _ProjectTaskCard({
+    required this.task,
+    required this.assignee,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -681,7 +888,7 @@ class _ProjectTaskCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: task.isOverdue 
+              color: task.isOverdue
                   ? Colors.red.withValues(alpha: 0.1)
                   : Colors.black.withValues(alpha: 0.02),
               blurRadius: 6,
@@ -707,14 +914,21 @@ class _ProjectTaskCard extends StatelessWidget {
                   ),
                 ),
                 PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                  icon: const Icon(
+                    Icons.more_vert,
+                    size: 18,
+                    color: Colors.grey,
+                  ),
                   onSelected: (value) {
                     if (value == 'view') {
                       // Navigate to task detail
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'view', child: Text('Xem chi tiết')),
+                    const PopupMenuItem(
+                      value: 'view',
+                      child: Text('Xem chi tiết'),
+                    ),
                   ],
                 ),
               ],
@@ -729,7 +943,11 @@ class _ProjectTaskCard extends StatelessWidget {
                     color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Icon(Icons.person, size: 14, color: Colors.blue.shade700),
+                  child: Icon(
+                    Icons.person,
+                    size: 14,
+                    color: Colors.blue.shade700,
+                  ),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -755,7 +973,11 @@ class _ProjectTaskCard extends StatelessWidget {
                       color: Colors.green.shade50,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Icon(Icons.play_circle_outline, size: 14, color: Colors.green.shade700),
+                    child: Icon(
+                      Icons.play_circle_outline,
+                      size: 14,
+                      color: Colors.green.shade700,
+                    ),
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -776,13 +998,17 @@ class _ProjectTaskCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: task.isOverdue ? Colors.red.shade50 : Colors.orange.shade50,
+                      color: task.isOverdue
+                          ? Colors.red.shade50
+                          : Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Icon(
                       Icons.access_time,
                       size: 14,
-                      color: task.isOverdue ? Colors.red.shade700 : Colors.orange.shade700,
+                      color: task.isOverdue
+                          ? Colors.red.shade700
+                          : Colors.orange.shade700,
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -809,7 +1035,8 @@ class _ProjectTaskCard extends StatelessWidget {
               ),
             ],
             // Evidence Image
-            if (task.status == ProjectTaskStatus.done && task.evidenceLink.isNotEmpty) ...[
+            if (task.status == ProjectTaskStatus.done &&
+                task.evidenceLink.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
@@ -831,11 +1058,18 @@ class _ProjectTaskCard extends StatelessWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.broken_image, size: 30, color: Colors.grey[600]),
+                            Icon(
+                              Icons.broken_image,
+                              size: 30,
+                              color: Colors.grey[600],
+                            ),
                             const SizedBox(height: 4),
                             Text(
                               'Không thể tải ảnh',
-                              style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[600]),
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: Colors.grey[600],
+                              ),
                             ),
                           ],
                         ),
@@ -850,7 +1084,8 @@ class _ProjectTaskCard extends StatelessWidget {
                         child: Center(
                           child: CircularProgressIndicator(
                             value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
                                 : null,
                           ),
                         ),

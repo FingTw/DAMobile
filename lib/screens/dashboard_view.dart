@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:untitled3/models/task_model.dart';
-import 'package:untitled3/services/database_service.dart';
+import 'package:untitled3/data/repositories/task_repository.dart';
+import 'package:untitled3/data/repositories/project_task_repository.dart';
+import 'package:untitled3/providers/project_provider.dart';
+import 'package:untitled3/providers/project_task_provider.dart';
+import 'package:untitled3/screens/project_details_screen.dart';
 
 class DashboardView extends StatelessWidget {
   const DashboardView({super.key});
@@ -14,8 +19,7 @@ class DashboardView extends StatelessWidget {
     if (user == null) return const Center(child: Text("Not logged in"));
 
     return StreamBuilder<List<Task>>(
-      // FIX: Point back to the personalTasks stream
-      stream: DatabaseService(uid: user.uid).personalTasks,
+      stream: TaskRepository(uid: user.uid).personalTasks,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -59,6 +63,11 @@ class DashboardView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
+                
+                // Project Overview Section - KEEPING THIS
+                _buildProjectOverviewSection(context),
+                const SizedBox(height: 30),
+
                 _buildBarChartSection(tasks),
                 const SizedBox(height: 30),
                 _buildCircularProgressSection(
@@ -75,6 +84,210 @@ class DashboardView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  // KEEPING Project Overview Section
+  Widget _buildProjectOverviewSection(BuildContext context) {
+    final projectProvider = Provider.of<ProjectProvider>(context);
+    final projectTaskProvider = Provider.of<ProjectTaskProvider>(context);
+
+    if (projectProvider.isLoading || projectTaskProvider.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (projectProvider.projectCount == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Team Projects Overview",
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        // Simple stats cards
+        Row(
+          children: [
+            Expanded(
+              child: _buildSimpleStatCard(
+                "Projects",
+                projectProvider.projectCount.toString(),
+                Icons.folder,
+                Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildSimpleStatCard(
+                "Team Tasks",
+                projectTaskProvider.totalTasks.toString(),
+                Icons.task_alt,
+                Colors.green,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSimpleStatCard(
+                "Completed",
+                projectTaskProvider.completedTasks.toString(),
+                Icons.check_circle,
+                Colors.purple,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildSimpleStatCard(
+                "In Progress",
+                projectTaskProvider.inProgressTasks.toString(),
+                Icons.pending,
+                Colors.orange,
+              ),
+            ),
+          ],
+        ),
+
+        // Project list
+        if (projectProvider.projects.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Text(
+            "Your Projects",
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...projectProvider.projects.take(3).map((project) {
+            return FutureBuilder<Map<String, int>>(
+              future: ProjectTaskRepository(uid: FirebaseAuth.instance.currentUser!.uid)
+                  .getProjectTaskStats(project.id),
+              builder: (context, statsSnapshot) {
+                final stats = statsSnapshot.data ?? {'total': 0, 'completed': 0};
+                return _buildProjectCard(context, project, stats['total']!, stats['completed']!);
+              },
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSimpleStatCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProjectCard(BuildContext context, project, int totalTasks, int completedTasks) {
+    final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+    
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProjectDetailsScreen(project: project),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              project.name,
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: Colors.grey[200],
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  "${(progress * 100).toInt()}%",
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "$completedTasks/$totalTasks tasks completed",
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

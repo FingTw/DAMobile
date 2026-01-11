@@ -17,30 +17,15 @@ class NotificationService {
     OneSignal.initialize(oneSignalAppId);
     OneSignal.Notifications.requestPermission(true);
 
-    var id = OneSignal.User.pushSubscription.id;
-    debugPrint("OneSignal Player ID: $id");
-
-    OneSignal.User.pushSubscription.addObserver((state) {
-      debugPrint("OneSignal Player ID update: ${state.current.id}");
-      if (state.current.id != null) {
-        syncOneSignalId();
-      }
-    });
-
     OneSignal.Notifications.addForegroundWillDisplayListener((event) {
-      event.preventDefault();
-      ToastService.show(
-        title: event.notification.title ?? "Thông báo",
-        message: event.notification.body ?? "",
-        type: NotificationType.info,
-      );
+      event.notification.display();
     });
 
     OneSignal.Notifications.addClickListener((event) {
-      debugPrint('NOTIFICATION CLICKED: ${event.notification.additionalData}');
       _handleNotificationClick(event.notification.additionalData);
     });
   }
+
 
   static Future<void> _handleNotificationClick(Map<String, dynamic>? data) async {
     if (data == null) return;

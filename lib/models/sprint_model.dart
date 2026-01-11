@@ -1,4 +1,3 @@
-
 enum SprintStatus { upcoming, inProgress, completed }
 
 class Sprint {
@@ -9,6 +8,8 @@ class Sprint {
   final DateTime endDate;
   final SprintStatus status;
   final int priority;
+  final String goal; // Sprint Goal
+  final String goalDescription; // Detailed description of the goal
 
   Sprint({
     required this.id,
@@ -18,6 +19,8 @@ class Sprint {
     required this.endDate,
     this.status = SprintStatus.upcoming,
     this.priority = 0,
+    this.goal = '',
+    this.goalDescription = '',
   });
 
   factory Sprint.fromMap(Map<String, dynamic> data, String documentId) {
@@ -32,6 +35,8 @@ class Sprint {
         orElse: () => SprintStatus.upcoming,
       ),
       priority: data['priority'] ?? 0,
+      goal: data['goal'] ?? '',
+      goalDescription: data['goalDescription'] ?? '',
     );
   }
 
@@ -43,12 +48,16 @@ class Sprint {
       'endDate': endDate.millisecondsSinceEpoch,
       'status': status.toString().split('.').last,
       'priority': priority,
+      'goal': goal,
+      'goalDescription': goalDescription,
     };
   }
 
   bool get isActive {
     final now = DateTime.now();
     return status == SprintStatus.inProgress ||
-        (status == SprintStatus.upcoming && startDate.isBefore(now) && endDate.isAfter(now));
+        (status == SprintStatus.upcoming &&
+            startDate.isBefore(now) &&
+            endDate.isAfter(now));
   }
 }
