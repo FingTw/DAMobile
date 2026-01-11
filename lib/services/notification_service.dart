@@ -17,6 +17,13 @@ class NotificationService {
     OneSignal.initialize(oneSignalAppId);
     OneSignal.Notifications.requestPermission(true);
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await OneSignal.login(user.uid);
+      debugPrint("✅ OneSignal login with uid: ${user.uid}");
+    }
+
+
     var id = OneSignal.User.pushSubscription.id;
     debugPrint("OneSignal Player ID: $id");
 

@@ -26,8 +26,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    NotificationService.syncOneSignalId();
-    // Hiển thị thông báo hàng ngày khi đăng nhập
     _showDailyNotifications();
   }
 
