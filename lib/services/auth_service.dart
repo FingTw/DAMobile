@@ -27,9 +27,6 @@ class AuthService {
       final User? user = userCredential.user;
 
       if (user != null) {
-        if (user.email != null) {
-          await NotificationService.setEmail(user.email!);
-        }
         await NotificationService.syncOneSignalId();
         final userRef = FirebaseDatabase.instance.ref('users/${user.uid}');
         final snapshot = await userRef.get();
@@ -53,7 +50,6 @@ class AuthService {
   Future<String?> signInWithEmailAndPassword(String email, String password) async {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
-      await NotificationService.setEmail(email);
       await NotificationService.syncOneSignalId();
       return null; // Success
     } on FirebaseAuthException catch (e) {
@@ -73,7 +69,6 @@ class AuthService {
       UserCredential result = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       User? user = result.user;
       if (user != null) {
-        await NotificationService.setEmail(email);
         await NotificationService.syncOneSignalId();
         await DatabaseService(uid: user.uid).createNewUser(name, email);
       }
@@ -92,7 +87,6 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
-      await NotificationService.logout();
       await _googleSignIn.signOut();
       await _auth.signOut();
     } catch (e) {
